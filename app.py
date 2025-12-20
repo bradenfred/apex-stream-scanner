@@ -49,6 +49,84 @@ except Exception as e:
     print(f"Tesseract not available: {e}")
     print("OCR functionality will be limited")
 
+# OCR Learning System
+class OCRLearningSystem:
+    def __init__(self):
+        self.detection_history = []
+        self.preprocessing_success = {f'preprocess_v{i}': {'success': 0, 'total': 0} for i in range(1, 22)}
+        self.confidence_threshold = 0.6  # Minimum confidence for "good" detection
+        self.max_history = 1000  # Keep last 1000 detections
+
+    def record_detection(self, username, preprocessing_variant, ocr_text, confidence, squads_found, kills_found):
+        """Record OCR detection for learning"""
+        entry = {
+            'timestamp': time.time(),
+            'username': username,
+            'variant': preprocessing_variant,
+            'text': ocr_text,
+            'confidence': confidence,
+            'squads_found': squads_found,
+            'kills_found': kills_found,
+            'successful': bool(squads_found or kills_found)
+        }
+
+        self.detection_history.append(entry)
+        if len(self.detection_history) > self.max_history:
+            self.detection_history.pop(0)
+
+        # Update preprocessing success rates
+        variant_key = f'preprocess_v{preprocessing_variant}'
+        if variant_key in self.preprocessing_success:
+            self.preprocessing_success[variant_key]['total'] += 1
+            if entry['successful']:
+                self.preprocessing_success[variant_key]['success'] += 1
+
+    def get_best_variants(self, limit=5):
+        """Return preprocessing variants sorted by success rate"""
+        variants = []
+        for variant, stats in self.preprocessing_success.items():
+            if stats['total'] > 0:
+                success_rate = stats['success'] / stats['total']
+                variants.append((variant, success_rate, stats['total']))
+
+        # Sort by success rate, then by total attempts
+        variants.sort(key=lambda x: (x[1], x[2]), reverse=True)
+        return variants[:limit]
+
+    def adaptive_preprocessing_order(self):
+        """Reorder preprocessing variants based on learning"""
+        best_variants = self.get_best_variants(10)
+
+        # Create weighted order - prioritize successful variants
+        ordered_variants = []
+        for variant_name, success_rate, total in best_variants:
+            variant_idx = int(variant_name.split('_v')[1])
+            if variant_idx <= len(PREPROCESS_VARIANTS):
+                ordered_variants.append(PREPROCESS_VARIANTS[variant_idx - 1])
+
+        # Fill remaining with original order
+        for prep_func, lang in PREPROCESS_VARIANTS:
+            if (prep_func, lang) not in ordered_variants:
+                ordered_variants.append((prep_func, lang))
+
+        return ordered_variants[:12]  # Limit to 12 for performance
+
+    def get_detection_stats(self):
+        """Return statistics about OCR performance"""
+        total_detections = len(self.detection_history)
+        successful_detections = sum(1 for d in self.detection_history if d['successful'])
+        success_rate = successful_detections / total_detections if total_detections > 0 else 0
+
+        return {
+            'total_detections': total_detections,
+            'successful_detections': successful_detections,
+            'success_rate': success_rate,
+            'best_variants': self.get_best_variants(3)
+        }
+
+# Global OCR learning system
+ocr_learner = OCRLearningSystem()
+
 # Global list to hold qualifying streams
 qualifying_streams = []
 last_updated = ""
@@ -410,58 +488,137 @@ def extract_kills_from_text(text):
     return kills
 
 def ocr_squad_count(frame, username):
-    print("Running multi-variation OCR on frame...")
+    print("Running adaptive OCR with learning on frame...")
     try:
         height, width, _ = frame.shape
 
-        # Crop for squads (top-right)
-        squads_crop_x_start = int(width * 0.8)
-        squads_crop_y_start = int(height * 0.01)
-        squads_crop_y_end = int(height * 0.08)
-        squads_cropped = frame[squads_crop_y_start:squads_crop_y_end, squads_crop_x_start:width]
+        # Crop for HUD info (upper-right corner - contains both squads and kills)
+        hud_crop_x_start = int(width * 0.75)  # Start from 75% across screen
+        hud_crop_y_start = int(height * 0.01)  # Start from 1% down
+        hud_crop_y_end = int(height * 0.12)    # End at 12% down
+        hud_crop_x_end = width                     # Go to right edge
 
-        # Process squads
+        hud_cropped = frame[hud_crop_y_start:hud_crop_y_end, hud_crop_x_start:hud_crop_x_end]
+
+        # Use adaptive preprocessing order based on learning
+        preprocessing_order = ocr_learner.adaptive_preprocessing_order()
+
+        # Process the entire HUD region for both squads and kills
         all_squads = []
-        for idx, (prep_func, lang) in enumerate(PREPROCESS_VARIANTS, 1):
-            binary = prep_func(squads_cropped)
-            squads_list = run_ocr_on_processed(binary, username, idx, lang)
-            all_squads.extend(squads_list)
-
-        # Crop for kills (top-center)
-        kills_crop_x_start = int(width * 0.35)
-        kills_crop_x_end = int(width * 0.65)
-        kills_crop_y_start = int(height * 0.02)
-        kills_crop_y_end = int(height * 0.12)
-        kills_cropped = frame[kills_crop_y_start:kills_crop_y_end, kills_crop_x_start:kills_crop_x_end]
-
-        # Process kills
         all_kills = []
-        for idx, (prep_func, lang) in enumerate(PREPROCESS_VARIANTS, 1):
-            binary = prep_func(kills_cropped)
-            kills_list = run_ocr_on_processed_kills(binary, username, idx, lang)
-            all_kills.extend(kills_list)
+        variant_results = []
 
-        # Determine squads
-        squads = None
+        for idx, (prep_func, lang) in enumerate(preprocessing_order, 1):
+            binary = prep_func(hud_cropped)
+
+            # Run OCR and get confidence data
+            try:
+                # Get detailed OCR data with confidence
+                ocr_data = pytesseract.image_to_data(binary, config='--psm 6', output_type=pytesseract.Output.DICT)
+                text = ' '.join([word for word in ocr_data['text'] if word.strip()])
+                confidences = ocr_data['conf']
+
+                # Calculate average confidence (excluding -1 values)
+                valid_confidences = [c for c in confidences if c >= 0]
+                avg_confidence = sum(valid_confidences) / len(valid_confidences) if valid_confidences else 0
+
+                print(f"Raw OCR text Tesseract (v{idx}): '{text.strip()}' (conf: {avg_confidence:.1f}%)")
+
+                # Extract both squads and kills from the same OCR text
+                squads_from_text = extract_squads_from_text(text)
+                kills_from_text = extract_kills_from_text(text)
+
+                # Record this detection for learning
+                successful = bool(squads_from_text or kills_from_text)
+                ocr_learner.record_detection(
+                    username=username,
+                    preprocessing_variant=idx,
+                    ocr_text=text,
+                    confidence=avg_confidence / 100.0,  # Convert to 0-1 scale
+                    squads_found=squads_from_text,
+                    kills_found=kills_from_text
+                )
+
+                variant_results.append({
+                    'variant': idx,
+                    'text': text,
+                    'confidence': avg_confidence,
+                    'squads': squads_from_text,
+                    'kills': kills_from_text,
+                    'successful': successful
+                })
+
+                if squads_from_text:
+                    print(f"Tesseract v{idx} detected squads: {squads_from_text}")
+                    all_squads.extend(squads_from_text)
+
+                if kills_from_text:
+                    print(f"Tesseract v{idx} detected kills: {kills_from_text}")
+                    all_kills.extend(kills_from_text)
+
+                # Early exit if we found good results with high confidence
+                if successful and avg_confidence > 70:
+                    print(f"High-confidence detection found, stopping early")
+                    break
+
+            except Exception as e:
+                print(f"Tesseract error on variant {idx}: {e}")
+
+        # Ensemble voting: if multiple variants agree on the same numbers, be more confident
+        final_squads = None
+        final_kills = None
+
         if all_squads:
-            valid_squads = [s for s in all_squads if s <= 10]
-            if valid_squads:
-                squads = min(valid_squads)
-                print(f"Valid squads detected: {squads}")
+            # Use majority voting for squads
+            squad_counts = {}
+            for squad in all_squads:
+                squad_counts[squad] = squad_counts.get(squad, 0) + 1
 
-        # Determine kills
-        kills = None
+            # Find most common squad count, but only if it appears multiple times
+            max_count = max(squad_counts.values())
+            if max_count >= 2:  # At least 2 variants agreed
+                final_squads = [squad for squad, count in squad_counts.items() if count == max_count][0]
+            else:
+                # Fallback to filtering valid squads
+                valid_squads = [s for s in all_squads if s <= 10]
+                if valid_squads:
+                    final_squads = min(valid_squads)
+
         if all_kills:
-            valid_kills = [k for k in all_kills if k >= 10]  # Assuming high kills start from 10+
-            if valid_kills:
-                kills = max(valid_kills)  # Take the highest detected kills
-                print(f"Valid kills detected: {kills}")
+            # Use majority voting for kills
+            kill_counts = {}
+            for kill in all_kills:
+                kill_counts[kill] = kill_counts.get(kill, 0) + 1
 
-        if squads is None and kills is None:
-            print("No valid squads or kills detected.")
+            # Find most common kill count, but only if it appears multiple times
+            max_count = max(kill_counts.values())
+            if max_count >= 2:  # At least 2 variants agreed
+                final_kills = [kill for kill, count in kill_counts.items() if count == max_count][0]
+            else:
+                # Fallback to filtering valid kills
+                valid_kills = [k for k in all_kills if k >= 7]  # Changed to >6 as user requested
+                if valid_kills:
+                    final_kills = max(valid_kills)
+
+        # Print learning stats occasionally
+        if len(ocr_learner.detection_history) % 50 == 0 and len(ocr_learner.detection_history) > 0:
+            stats = ocr_learner.get_detection_stats()
+            print(f"\n--- OCR Learning Stats ---")
+            print(f"Total detections: {stats['total_detections']}")
+            print(f"Success rate: {stats['success_rate']:.1%}")
+            print(f"Best variants: {stats['best_variants']}")
+            print("------------------------\n")
+
+        if final_squads is not None:
+            print(f"Final squads detected (after ensemble): {final_squads}")
+        if final_kills is not None:
+            print(f"Final kills detected (after ensemble): {final_kills}")
+
+        if final_squads is None and final_kills is None:
+            print("No valid squads or kills detected after ensemble voting.")
             return None
 
-        return {"squads": squads, "kills": kills}
+        return {"squads": final_squads, "kills": final_kills}
     except Exception as e:
         print(f"OCR error: {str(e)}")
         return None
@@ -547,6 +704,17 @@ def fetch():
     thread = threading.Thread(target=fetch_and_update_streams)
     thread.start()
     return jsonify({"message": "Stream fetching started"})
+
+@app.route('/ocr-stats')
+def ocr_stats():
+    """Return OCR learning statistics"""
+    with streams_lock:
+        stats = ocr_learner.get_detection_stats()
+        return jsonify({
+            "ocr_learning_stats": stats,
+            "streams_analyzed": len(qualifying_streams),
+            "last_updated": last_updated
+        })
 
 if __name__ == '__main__':
     # For local development, optionally run initial scan

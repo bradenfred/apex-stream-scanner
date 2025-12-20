@@ -424,9 +424,11 @@
                     <div class="progress-fill" id="progress-fill"></div>
                 </div>
                 <p id="progress-text" class="progress-status">Starting scan...</p>
-                <div id="debug-info" class="debug-panel" style="display: none;">
+            <div id="debug-info" class="debug-panel" style="display: none;">
                     <h3>🔍 Debug Information</h3>
                     <div id="debug-content"></div>
+                    <h3>🧠 OCR Learning Stats</h3>
+                    <div id="ocr-stats-content">Loading...</div>
                 </div>
                 <button id="toggle-debug" class="debug-toggle" onclick="toggleDebug()" style="display: none;">Show Debug Info</button>
             </div>
@@ -950,6 +952,49 @@
 
                 // Auto-scroll to bottom
                 debugContent.scrollTop = debugContent.scrollHeight;
+            }
+
+            // Update OCR learning stats
+            updateOCRStats();
+        }
+
+        // Fetch and display OCR learning statistics
+        async function updateOCRStats() {
+            try {
+                const response = await fetch('/ocr-stats');
+                const data = await response.json();
+
+                const statsContent = document.getElementById('ocr-stats-content');
+                if (statsContent && data.ocr_learning_stats) {
+                    const stats = data.ocr_learning_stats;
+                    const bestVariants = stats.best_variants || [];
+
+                    let html = `
+                        <div style="margin-bottom: 10px;">
+                            <strong>Total Detections:</strong> ${stats.total_detections}<br>
+                            <strong>Success Rate:</strong> ${(stats.success_rate * 100).toFixed(1)}%<br>
+                            <strong>Streams Analyzed:</strong> ${data.streams_analyzed}
+                        </div>
+                    `;
+
+                    if (bestVariants.length > 0) {
+                        html += '<div><strong>Best Preprocessing Methods:</strong><br>';
+                        bestVariants.forEach((variant, index) => {
+                            const successRate = (variant[1] * 100).toFixed(1);
+                            const totalAttempts = variant[2];
+                            html += `${index + 1}. Method ${variant[0]}: ${successRate}% success (${totalAttempts} attempts)<br>`;
+                        });
+                        html += '</div>';
+                    }
+
+                    statsContent.innerHTML = html;
+                }
+            } catch (error) {
+                console.error('Failed to fetch OCR stats:', error);
+                const statsContent = document.getElementById('ocr-stats-content');
+                if (statsContent) {
+                    statsContent.innerHTML = '<em>Error loading stats</em>';
+                }
             }
         }
 
