@@ -542,31 +542,49 @@ def run_ocr_on_processed_kills(binary, username, variation_idx, lang):
     return kills_list
 
 def extract_squads_from_text(text):
-    """Extract squads remaining from OCR text with flexible matching"""
+    """Extract squads remaining from OCR text with Apex-specific patterns"""
     text_lower = text.lower()
     numbers = re.findall(r'\d+', text_lower)
 
     squads = []
-    # More flexible patterns for squads
-    squad_patterns = [
+    # Apex Legends specific patterns
+    apex_squad_patterns = [
+        r'(\d+)/20',                    # "3/20" squads
+        r'(\d+)\s*squads?\s*left',      # "3 squads left"
+        r'(\d+)\s*squads?\s*remaining', # "3 squads remaining"
+        r'squads?:\s*(\d+)',           # "Squads: 3"
+        r'(\d+)\s*alive',               # "3 alive"
+        r'(\d+)\s*teams?\s*left',       # "3 teams left"
+        r'(\d+)\s*of\s*20',             # "3 of 20"
+        r'(\d+)\s*left',                # "3 left"
+        r'remaining:\s*(\d+)',          # "Remaining: 3"
+    ]
+
+    # Generic fallback patterns
+    generic_squad_patterns = [
         r'(\d+)\s*squad',  # "3 squad"
         r'squad\s*(\d+)',  # "squad 3"
-        r'(\d+)\s*left',   # "3 left"
-        r'left\s*(\d+)',   # "left 3"
         r'(\d+)\s*remaining', # "3 remaining"
         r'remaining\s*(\d+)', # "remaining 3"
     ]
 
-    for pattern in squad_patterns:
+    # Try Apex patterns first
+    for pattern in apex_squad_patterns + generic_squad_patterns:
         matches = re.findall(pattern, text_lower)
         for match in matches:
             num_int = int(match)
             if 1 <= num_int <= 20:
                 squads.append(num_int)
 
-    # Also check for "squads left" style text
-    if 'squad' in text_lower and ('left' in text_lower or 'remaining' in text_lower):
-        # Extract any numbers in context
+    # Special handling for "X/20" format
+    slash_matches = re.findall(r'(\d+)/20', text_lower)
+    for match in slash_matches:
+        num_int = int(match)
+        if 1 <= num_int <= 20:
+            squads.append(num_int)
+
+    # Context-based extraction for unclear cases
+    if ('squad' in text_lower or 'team' in text_lower) and ('left' in text_lower or 'remaining' in text_lower or 'alive' in text_lower):
         for num in numbers:
             num_int = int(num)
             if 1 <= num_int <= 20:
@@ -623,174 +641,177 @@ def detect_kills_visual(image, head_template=None):
         return None
 
 def ocr_squad_count(frame, username):
-    print("Running adaptive OCR with learning on frame...")
+    print("🎯 Running APEX-optimized OCR with multiple PSM modes...")
     try:
         height, width, _ = frame.shape
 
-        # Crop for HUD info (upper-right corner - contains both squads and kills)
-        hud_crop_x_start = int(width * 0.75)  # Start from 75% across screen
-        hud_crop_y_start = int(height * 0.01)  # Start from 1% down
-        hud_crop_y_end = int(height * 0.12)    # End at 12% down
-        hud_crop_x_end = width                     # Go to right edge
-
-        hud_cropped = frame[hud_crop_y_start:hud_crop_y_end, hud_crop_x_start:hud_crop_x_end]
+        # APEX HUD CROPS: Squads in bottom-right, Kills in top-right
+        squads_crop = frame[int(height * 0.85):int(height * 0.95), int(width * 0.85):width]  # Bottom-right corner
+        kills_crop = frame[int(height * 0.05):int(height * 0.15), int(width * 0.85):width]   # Top-right corner
 
         # FAST PATH: Try visual kill detection first (much faster than OCR)
         kills_from_visual = None
         if training_system.get_head_templates():
             for head_template in training_system.get_head_templates():
-                visual_kills = detect_kills_visual(hud_cropped, head_template)
+                visual_kills = detect_kills_visual(kills_crop, head_template)
                 if visual_kills is not None and visual_kills > 0:
                     kills_from_visual = visual_kills
                     print(f"⚡ FAST VISUAL: Found {visual_kills} kills using template")
                     break
 
-        # Use adaptive preprocessing order based on learning (limited to 4 best variants)
-        preprocessing_order = ocr_learner.adaptive_preprocessing_order()[:4]  # LIMIT to 4 variants for speed
+        # Use adaptive preprocessing order (limited to 3 best variants for speed)
+        preprocessing_order = ocr_learner.adaptive_preprocessing_order()[:3]
 
-        # Process preprocessing variants in parallel for maximum speed
+        # MULTIPLE PSM MODES for different text layouts
+        psm_modes = ['--psm 6', '--psm 7', '--psm 8', '--psm 11', '--psm 13']
+
         all_squads = []
         all_kills = []
         variant_results = []
 
-        def process_variant(variant_info):
-            """Process a single preprocessing variant"""
-            idx, (prep_func, lang) = variant_info
+        def process_ocr_variant(variant_info):
+            """Process OCR with different preprocessing + PSM combinations"""
+            prep_idx, (prep_func, lang) = variant_info
 
-            try:
-                binary = prep_func(hud_cropped)
+            results = []
+            for psm_idx, psm_config in enumerate(psm_modes[:3]):  # Limit PSM modes for speed
+                try:
+                    # Process squads region
+                    squads_binary = prep_func(squads_crop)
+                    squads_ocr_data = pytesseract.image_to_data(squads_binary, config=psm_config, output_type=pytesseract.Output.DICT)
+                    squads_text = ' '.join([word for word in squads_ocr_data['text'] if word.strip()])
 
-                # Get detailed OCR data with confidence
-                ocr_data = pytesseract.image_to_data(binary, config='--psm 6', output_type=pytesseract.Output.DICT)
-                text = ' '.join([word for word in ocr_data['text'] if word.strip()])
-                confidences = ocr_data['conf']
+                    # Process kills region
+                    kills_binary = prep_func(kills_crop)
+                    kills_ocr_data = pytesseract.image_to_data(kills_binary, config=psm_config, output_type=pytesseract.Output.DICT)
+                    kills_text = ' '.join([word for word in kills_ocr_data['text'] if word.strip()])
 
-                # Calculate average confidence (excluding -1 values)
-                valid_confidences = [c for c in confidences if c >= 0]
-                avg_confidence = sum(valid_confidences) / len(valid_confidences) if valid_confidences else 0
+                    # Combine confidences
+                    all_confidences = squads_ocr_data['conf'] + kills_ocr_data['conf']
+                    valid_confidences = [c for c in all_confidences if c >= 0]
+                    avg_confidence = sum(valid_confidences) / len(valid_confidences) if valid_confidences else 0
 
-                # Extract both squads and kills from the same OCR text
-                squads_from_text = extract_squads_from_text(text)
-                kills_from_text = extract_kills_from_text(text)
+                    # Extract data from both regions
+                    squads_from_text = extract_squads_from_text(squads_text)
+                    kills_from_text = extract_kills_from_text(kills_text)
 
-                # Combine text and visual kill detections
-                all_kills_from_variant = kills_from_text[:]
-                if kills_from_visual is not None:
-                    all_kills_from_variant.append(kills_from_visual)
+                    # Combine text and visual kill detections
+                    all_kills_from_variant = kills_from_text[:]
+                    if kills_from_visual is not None:
+                        all_kills_from_variant.append(kills_from_visual)
 
-                successful = bool(squads_from_text or all_kills_from_variant)
+                    successful = bool(squads_from_text or all_kills_from_variant)
 
-                return {
-                    'variant': idx,
-                    'text': text,
-                    'confidence': avg_confidence,
-                    'squads': squads_from_text,
-                    'kills': all_kills_from_variant,
-                    'successful': successful,
-                    'raw_text': text
-                }
+                    results.append({
+                        'prep_variant': prep_idx,
+                        'psm_mode': psm_idx + 6,  # PSM mode number
+                        'squads_text': squads_text,
+                        'kills_text': kills_text,
+                        'combined_text': f"{squads_text} | {kills_text}",
+                        'confidence': avg_confidence,
+                        'squads': squads_from_text,
+                        'kills': all_kills_from_variant,
+                        'successful': successful
+                    })
 
-            except Exception as e:
-                print(f"Tesseract error on variant {idx}: {e}")
-                return None
+                except Exception as e:
+                    print(f"OCR error prep_v{prep_idx} psm_{psm_idx + 6}: {e}")
 
-        # Process variants in parallel using ThreadPoolExecutor
+            return results
+
+        # Process preprocessing variants in parallel
         variant_infos = [(idx, prep_info) for idx, prep_info in enumerate(preprocessing_order, 1)]
 
-        with ThreadPoolExecutor(max_workers=min(4, len(variant_infos))) as variant_executor:
-            variant_futures = [variant_executor.submit(process_variant, info) for info in variant_infos]
+        with ThreadPoolExecutor(max_workers=min(3, len(variant_infos))) as variant_executor:
+            variant_futures = [variant_executor.submit(process_ocr_variant, info) for info in variant_infos]
 
             for future in as_completed(variant_futures):
-                result = future.result()
-                if result:
-                    variant_results.append(result)
+                results = future.result()
+                for result in results:
+                    if result:
+                        variant_results.append(result)
 
-                    # Print results
-                    print(f"⚡ OCR v{result['variant']}: '{result['raw_text'].strip()}' (conf: {result['confidence']:.1f}%)")
+                        # Print results for debugging
+                        print(f"🎯 APEX OCR prep_v{result['prep_variant']} psm_{result['psm_mode']}: '{result['combined_text'][:50]}...' (conf: {result['confidence']:.1f}%)")
 
-                    if result['squads']:
-                        print(f"  → Squads: {result['squads']}")
-                        all_squads.extend(result['squads'])
+                        if result['squads']:
+                            print(f"  → Squads: {result['squads']}")
+                            all_squads.extend(result['squads'])
 
-                    if result['kills']:
-                        print(f"  → Kills: {result['kills']}")
-                        all_kills.extend(result['kills'])
+                        if result['kills']:
+                            print(f"  → Kills: {result['kills']}")
+                            all_kills.extend(result['kills'])
 
-                    # Record this detection for learning
-                    ocr_learner.record_detection(
-                        username=username,
-                        preprocessing_variant=result['variant'],
-                        ocr_text=result['raw_text'],
-                        confidence=result['confidence'] / 100.0,
-                        squads_found=result['squads'],
-                        kills_found=result['kills']
-                    )
+                        # Record this detection for learning (use combined variant ID)
+                        combined_variant = result['prep_variant'] * 10 + result['psm_mode']
+                        ocr_learner.record_detection(
+                            username=username,
+                            preprocessing_variant=combined_variant,
+                            ocr_text=result['combined_text'],
+                            confidence=result['confidence'] / 100.0,
+                            squads_found=result['squads'],
+                            kills_found=result['kills']
+                        )
 
-                    # Early exit if we found good results with high confidence
-                    if result['successful'] and result['confidence'] > 70:
-                        print(f"🎯 High-confidence detection found, stopping early")
-                        # Cancel remaining futures
-                        for f in variant_futures:
-                            f.cancel()
-                        break
+                        # Early exit if we found good results with high confidence
+                        if result['successful'] and result['confidence'] > 60:  # Lower threshold for training
+                            print(f"🎯 High-confidence APEX detection found, continuing...")
+                            break
 
-        # Ensemble voting: if multiple variants agree on the same numbers, be more confident
+        # IMPROVED ENSEMBLE VOTING with single high-confidence acceptance
         final_squads = None
         final_kills = None
 
         if all_squads:
-            # Use majority voting for squads
             squad_counts = {}
             for squad in all_squads:
                 squad_counts[squad] = squad_counts.get(squad, 0) + 1
 
-            # Find most common squad count, but only if it appears multiple times
             max_count = max(squad_counts.values())
             if max_count >= 2:  # At least 2 variants agreed
                 final_squads = [squad for squad, count in squad_counts.items() if count == max_count][0]
-            else:
-                # Fallback to filtering valid squads
-                valid_squads = [s for s in all_squads if s <= 10]
+            elif max_count == 1 and len(variant_results) > 0:  # Accept single detection if we have results
+                # Take the most reasonable squad count
+                valid_squads = [s for s in all_squads if 1 <= s <= 20]
                 if valid_squads:
-                    final_squads = min(valid_squads)
+                    # Prioritize endgame squads (lower numbers)
+                    final_squads = min(valid_squads) if min(valid_squads) <= 10 else max(valid_squads)
 
         if all_kills:
-            # Use majority voting for kills
             kill_counts = {}
             for kill in all_kills:
                 kill_counts[kill] = kill_counts.get(kill, 0) + 1
 
-            # Find most common kill count, but only if it appears multiple times
             max_count = max(kill_counts.values())
             if max_count >= 2:  # At least 2 variants agreed
                 final_kills = [kill for kill, count in kill_counts.items() if count == max_count][0]
-            else:
-                # Fallback to filtering valid kills
-                valid_kills = [k for k in all_kills if k >= 7]  # Changed to >6 as user requested
+            elif max_count == 1 and len(variant_results) > 0:  # Accept single detection
+                valid_kills = [k for k in all_kills if k >= 0]
                 if valid_kills:
-                    final_kills = max(valid_kills)
+                    final_kills = max(valid_kills)  # Take highest kill count
 
         # Print learning stats occasionally
-        if len(ocr_learner.detection_history) % 50 == 0 and len(ocr_learner.detection_history) > 0:
+        if len(ocr_learner.detection_history) % 25 == 0 and len(ocr_learner.detection_history) > 0:  # More frequent stats
             stats = ocr_learner.get_detection_stats()
-            print(f"\n--- OCR Learning Stats ---")
+            print(f"\n--- APEX OCR Learning Stats ---")
             print(f"Total detections: {stats['total_detections']}")
             print(f"Success rate: {stats['success_rate']:.1%}")
             print(f"Best variants: {stats['best_variants']}")
-            print("------------------------\n")
+            print("-------------------------------\n")
 
         if final_squads is not None:
-            print(f"Final squads detected (after ensemble): {final_squads}")
+            print(f"✅ Final APEX squads detected: {final_squads}")
         if final_kills is not None:
-            print(f"Final kills detected (after ensemble): {final_kills}")
+            print(f"✅ Final APEX kills detected: {final_kills}")
 
         if final_squads is None and final_kills is None:
-            print("No valid squads or kills detected after ensemble voting.")
+            print("❌ No valid APEX squads or kills detected")
             return None
 
         return {"squads": final_squads, "kills": final_kills}
+
     except Exception as e:
-        print(f"OCR error: {str(e)}")
+        print(f"❌ APEX OCR error: {str(e)}")
         return None
     finally:
         gc.collect()
