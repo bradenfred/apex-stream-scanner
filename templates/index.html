@@ -1511,8 +1511,9 @@
 
                     // Scale coordinates to original image size
                     const img = modal.querySelector('#training-image');
-                    const scaleX = TrainingState.currentScreenshot ? 1920 / img.offsetWidth : 1; // Assume 1920p if no dimensions
-                    const scaleY = TrainingState.currentScreenshot ? 1080 / img.offsetHeight : 1;
+                    // Use actual image dimensions for scaling (assuming 1920x1080 capture)
+                    const scaleX = 1920 / img.offsetWidth;
+                    const scaleY = 1080 / img.offsetHeight;
 
                     const scaledRect = {
                         x: Math.round(rect.x * scaleX),
