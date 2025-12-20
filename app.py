@@ -176,7 +176,7 @@ training_system = TrainingSystem()
 # Global list to hold qualifying streams
 qualifying_streams = []
 last_updated = ""
-fetch_status = {"is_fetching": False, "progress": "", "current_stream": 0, "total_streams": 0}
+fetch_status = {"is_fetching": False, "progress": "", "current_stream": 0, "total_streams": 0, "stop_requested": False}
 # Lock for thread-safe updates
 streams_lock = threading.Lock()
 
@@ -788,6 +788,12 @@ def fetch_and_update_streams():
         futures = [executor.submit(process_stream, stream) for stream in streams]
         completed = 0
         for future in as_completed(futures):
+            # Check if stop was requested
+            if fetch_status["stop_requested"]:
+                print("Stop signal received, halting processing...")
+                fetch_status["progress"] = f"Stopped! Processed {completed}/{len(streams)} streams."
+                break
+
             result = future.result()
             completed += 1
             fetch_status["current_stream"] = completed
@@ -900,6 +906,18 @@ def save_template():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/stop-fetch', methods=['POST'])
+def stop_fetch():
+    """Stop the current stream fetching process"""
+    global fetch_status
+    if not fetch_status["is_fetching"]:
+        return jsonify({"error": "No scan currently running"}), 400
+
+    fetch_status["stop_requested"] = True
+    fetch_status["progress"] = "Stopping scan..."
+    print("Stop signal sent to scanning process")
+    return jsonify({"message": "Stop signal sent - scan will halt soon"})
 
 if __name__ == '__main__':
     # For local development, optionally run initial scan

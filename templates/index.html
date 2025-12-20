@@ -417,6 +417,9 @@
                     <button id="refresh-btn" class="scan-btn" onclick="startStreamFetch()" aria-label="Scan for Apex streams">
                         <span class="btn-text">Scan Streams</span>
                     </button>
+                    <button id="stop-btn" class="scan-btn" style="display: none; background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);" onclick="stopStreamFetch()" aria-label="Stop current scan">
+                        <span class="btn-text">Stop Scan</span>
+                    </button>
                     <button id="train-btn" class="scan-btn secondary" onclick="startTraining()" aria-label="Train OCR with manual examples">
                         <span class="btn-text">Train Scanner</span>
                     </button>
@@ -788,10 +791,38 @@
 
             DOM.scanBtn.disabled = isScanning;
 
+            // Show/hide stop button
+            const stopBtn = document.getElementById('stop-btn');
+            if (stopBtn) {
+                stopBtn.style.display = isScanning ? 'inline-flex' : 'none';
+            }
+
             if (isScanning && !silent) {
                 DOM.scanBtn.innerHTML = '<div class="loading"></div> Scanning...';
             } else if (!isScanning) {
                 DOM.scanBtn.innerHTML = '<span class="btn-text">Scan Streams</span>';
+            }
+        }
+
+        // Stop stream fetching
+        async function stopStreamFetch() {
+            try {
+                const response = await fetch('/stop-fetch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (data.message) {
+                    showNotification('Stop signal sent - scan will halt soon', 'info');
+                } else if (data.error) {
+                    showNotification(`Stop failed: ${data.error}`, 'error');
+                }
+
+            } catch (error) {
+                console.error('Failed to stop scan:', error);
+                showNotification('Failed to stop scan', 'error');
             }
         }
 
