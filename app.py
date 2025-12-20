@@ -459,24 +459,54 @@ def get_apex_streams(token, limit=400):
     print(f"Selected {len(streams)} streams for OCR processing (prioritizing smaller streams)")
     return streams
 
-def capture_frame(username):
-    print(f"Capturing frame for {username}...")
+def capture_frame(username, timeout_seconds=10):
+    print(f"Capturing frame for {username} (timeout: {timeout_seconds}s)...")
     try:
-        streams = streamlink.streams(f"https://www.twitch.tv/{username}")
-        if not streams:
-            print(f"No streams available for {username}.")
+        import threading
+        result = [None]
+        error = [None]
+
+        def capture_worker():
+            try:
+                streams = streamlink.streams(f"https://www.twitch.tv/{username}")
+                if not streams:
+                    error[0] = f"No streams available for {username}."
+                    return
+
+                stream_url = streams["best"].url
+                cap = cv2.VideoCapture(stream_url)
+                ret, frame = cap.read()
+                cap.release()
+
+                if not ret:
+                    error[0] = f"Failed to read frame for {username} (ret={ret})."
+                    return
+
+                result[0] = frame
+                print(f"Frame captured successfully for {username}.")
+
+            except Exception as e:
+                error[0] = f"Error capturing frame for {username}: {str(e)}"
+
+        # Start capture in background thread
+        capture_thread = threading.Thread(target=capture_worker, daemon=True)
+        capture_thread.start()
+
+        # Wait for completion with timeout
+        capture_thread.join(timeout=timeout_seconds)
+
+        if capture_thread.is_alive():
+            print(f"Timeout: Capture for {username} took longer than {timeout_seconds} seconds, skipping...")
             return None
-        stream_url = streams["best"].url
-        cap = cv2.VideoCapture(stream_url)
-        ret, frame = cap.read()
-        cap.release()
-        if not ret:
-            print(f"Failed to read frame for {username} (ret={ret}).")
+
+        if error[0]:
+            print(f"Capture failed for {username}: {error[0]}")
             return None
-        print(f"Frame captured successfully for {username}.")
-        return frame
+
+        return result[0]
+
     except Exception as e:
-        print(f"Error capturing frame for {username}: {str(e)}")
+        print(f"Unexpected error in capture_frame for {username}: {str(e)}")
         return None
 
 def run_ocr_on_processed(binary, username, variation_idx, lang):

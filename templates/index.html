@@ -1160,9 +1160,15 @@
             let startX, startY;
             let rectangles = [];
 
+            // Prevent default drag behavior on image
+            img.addEventListener('dragstart', (e) => e.preventDefault());
+            img.addEventListener('mousedown', (e) => e.preventDefault());
+
             canvas.style.pointerEvents = 'auto';
 
             canvas.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 isDrawing = true;
                 const rect = canvas.getBoundingClientRect();
                 startX = e.clientX - rect.left;
@@ -1172,6 +1178,7 @@
             canvas.addEventListener('mousemove', (e) => {
                 if (!isDrawing) return;
 
+                e.preventDefault();
                 const rect = canvas.getBoundingClientRect();
                 const currentX = e.clientX - rect.left;
                 const currentY = e.clientY - rect.top;
@@ -1197,6 +1204,7 @@
             canvas.addEventListener('mouseup', (e) => {
                 if (!isDrawing) return;
 
+                e.preventDefault();
                 const rect = canvas.getBoundingClientRect();
                 const endX = e.clientX - rect.left;
                 const endY = e.clientY - rect.top;
@@ -1223,6 +1231,9 @@
                     ctx.strokeRect(r.x, r.y, r.width, r.height);
                 });
             });
+
+            // Prevent context menu on right click
+            canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
             // Store rectangles for later use
             canvas.rectangles = rectangles;
@@ -1416,8 +1427,8 @@
 
                     <div id="training-content" style="display: none;">
                         <div style="position: relative; margin: 20px 0; border: 2px solid #dee2e6; border-radius: 8px;">
-                            <img id="training-image" alt="Stream screenshot for training" style="max-width: 100%; height: auto; display: block;" crossorigin="anonymous">
-                            <canvas id="training-canvas" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
+                            <img id="training-image" alt="Stream screenshot for training" style="max-width: 100%; height: auto; display: block; user-select: none; -webkit-user-drag: none;" crossorigin="anonymous">
+                            <canvas id="training-canvas" style="position: absolute; top: 0; left: 0; pointer-events: auto; cursor: crosshair;"></canvas>
                         </div>
 
                         <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
