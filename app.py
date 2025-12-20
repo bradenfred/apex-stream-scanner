@@ -127,6 +127,52 @@ class OCRLearningSystem:
 # Global OCR learning system
 ocr_learner = OCRLearningSystem()
 
+# Training system for manual template learning
+class TrainingSystem:
+    def __init__(self):
+        self.templates_dir = "training_templates"
+        self.head_templates = []
+        self.screenshot_history = []
+        os.makedirs(self.templates_dir, exist_ok=True)
+        self.load_templates()
+
+    def load_templates(self):
+        """Load saved templates from disk"""
+        template_files = [f for f in os.listdir(self.templates_dir) if f.startswith("head_template_") and f.endswith(".png")]
+        self.head_templates = []
+        for template_file in template_files:
+            try:
+                template_path = os.path.join(self.templates_dir, template_file)
+                template = cv2.imread(template_path)
+                if template is not None:
+                    self.head_templates.append(template)
+                    print(f"Loaded template: {template_file}")
+            except Exception as e:
+                print(f"Error loading template {template_file}: {e}")
+
+    def save_head_template(self, image, x, y, w, h):
+        """Save a head template from a cropped region"""
+        try:
+            template = image[y:y+h, x:x+w]
+            if template.size > 0:
+                timestamp = int(time.time())
+                filename = f"head_template_{timestamp}.png"
+                filepath = os.path.join(self.templates_dir, filename)
+                cv2.imwrite(filepath, template)
+                self.head_templates.append(template)
+                print(f"Saved head template: {filename}")
+                return True
+        except Exception as e:
+            print(f"Error saving head template: {e}")
+        return False
+
+    def get_head_templates(self):
+        """Return available head templates"""
+        return self.head_templates
+
+# Global training system
+training_system = TrainingSystem()
+
 # Global list to hold qualifying streams
 qualifying_streams = []
 last_updated = ""
@@ -466,26 +512,85 @@ def run_ocr_on_processed_kills(binary, username, variation_idx, lang):
     return kills_list
 
 def extract_squads_from_text(text):
+    """Extract squads remaining from OCR text with flexible matching"""
     text_lower = text.lower()
     numbers = re.findall(r'\d+', text_lower)
+
     squads = []
-    if numbers and 'squad' in text_lower and 'left' in text_lower:
+    # More flexible patterns for squads
+    squad_patterns = [
+        r'(\d+)\s*squad',  # "3 squad"
+        r'squad\s*(\d+)',  # "squad 3"
+        r'(\d+)\s*left',   # "3 left"
+        r'left\s*(\d+)',   # "left 3"
+        r'(\d+)\s*remaining', # "3 remaining"
+        r'remaining\s*(\d+)', # "remaining 3"
+    ]
+
+    for pattern in squad_patterns:
+        matches = re.findall(pattern, text_lower)
+        for match in matches:
+            num_int = int(match)
+            if 1 <= num_int <= 20:
+                squads.append(num_int)
+
+    # Also check for "squads left" style text
+    if 'squad' in text_lower and ('left' in text_lower or 'remaining' in text_lower):
+        # Extract any numbers in context
         for num in numbers:
             num_int = int(num)
             if 1 <= num_int <= 20:
                 squads.append(num_int)
-    return squads
+
+    return list(set(squads))  # Remove duplicates
 
 def extract_kills_from_text(text):
+    """Extract kills from OCR text - but also prepare for visual detection"""
     text_lower = text.lower()
     numbers = re.findall(r'\d+', text_lower)
     kills = []
-    if numbers and ('kill' in text_lower or 'kills' in text_lower):
-        for num in numbers:
-            num_int = int(num)
-            if 0 <= num_int <= 100:  # Kills can be 0-100 typically
+
+    # Text-based kill detection (less common)
+    kill_patterns = [
+        r'(\d+)\s*kill',   # "5 kill"
+        r'kill\s*(\d+)',   # "kill 5"
+        r'(\d+)\s*kills',  # "5 kills"
+        r'kills\s*(\d+)',  # "kills 5"
+    ]
+
+    for pattern in kill_patterns:
+        matches = re.findall(pattern, text_lower)
+        for match in matches:
+            num_int = int(match)
+            if 0 <= num_int <= 100:
                 kills.append(num_int)
-    return kills
+
+    return list(set(kills))  # Remove duplicates
+
+def detect_kills_visual(image, head_template=None):
+    """Detect kills using visual template matching for head silhouettes"""
+    if head_template is None:
+        # For now, return None - will implement template loading later
+        return None
+
+    try:
+        # Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        template_gray = cv2.cvtColor(head_template, cv2.COLOR_BGR2GRAY)
+
+        # Template matching
+        result = cv2.matchTemplate(gray, template_gray, cv2.TM_CCOEFF_NORMED)
+        threshold = 0.7  # Similarity threshold
+
+        # Find locations above threshold
+        locations = np.where(result >= threshold)
+        kill_count = len(locations[0]) if locations[0].size > 0 else 0
+
+        return kill_count if kill_count > 0 else None
+
+    except Exception as e:
+        print(f"Visual kill detection error: {e}")
+        return None
 
 def ocr_squad_count(frame, username):
     print("Running adaptive OCR with learning on frame...")
@@ -528,15 +633,31 @@ def ocr_squad_count(frame, username):
                 squads_from_text = extract_squads_from_text(text)
                 kills_from_text = extract_kills_from_text(text)
 
+                # Also try visual kill detection using saved templates
+                kills_from_visual = None
+                if training_system.get_head_templates():
+                    # Try visual detection with each saved head template
+                    for head_template in training_system.get_head_templates():
+                        visual_kills = detect_kills_visual(hud_cropped, head_template)
+                        if visual_kills is not None:
+                            kills_from_visual = visual_kills
+                            print(f"Visual detection found {visual_kills} kills using template")
+                            break
+
+                # Combine text and visual kill detections
+                all_kills_from_variant = kills_from_text[:]
+                if kills_from_visual is not None:
+                    all_kills_from_variant.append(kills_from_visual)
+
                 # Record this detection for learning
-                successful = bool(squads_from_text or kills_from_text)
+                successful = bool(squads_from_text or all_kills_from_variant)
                 ocr_learner.record_detection(
                     username=username,
                     preprocessing_variant=idx,
                     ocr_text=text,
                     confidence=avg_confidence / 100.0,  # Convert to 0-1 scale
                     squads_found=squads_from_text,
-                    kills_found=kills_from_text
+                    kills_found=all_kills_from_variant
                 )
 
                 variant_results.append({
@@ -544,7 +665,7 @@ def ocr_squad_count(frame, username):
                     'text': text,
                     'confidence': avg_confidence,
                     'squads': squads_from_text,
-                    'kills': kills_from_text,
+                    'kills': all_kills_from_variant,
                     'successful': successful
                 })
 
@@ -552,9 +673,9 @@ def ocr_squad_count(frame, username):
                     print(f"Tesseract v{idx} detected squads: {squads_from_text}")
                     all_squads.extend(squads_from_text)
 
-                if kills_from_text:
-                    print(f"Tesseract v{idx} detected kills: {kills_from_text}")
-                    all_kills.extend(kills_from_text)
+                if all_kills_from_variant:
+                    print(f"Tesseract v{idx} detected kills: {all_kills_from_variant}")
+                    all_kills.extend(all_kills_from_variant)
 
                 # Early exit if we found good results with high confidence
                 if successful and avg_confidence > 70:
@@ -715,6 +836,70 @@ def ocr_stats():
             "streams_analyzed": len(qualifying_streams),
             "last_updated": last_updated
         })
+
+@app.route('/capture-screenshot/<username>')
+def capture_screenshot(username):
+    """Capture a screenshot from a specific stream for training"""
+    try:
+        frame = capture_frame(username)
+        if frame is None:
+            return jsonify({"error": "Failed to capture frame from stream"}), 400
+
+        # Save screenshot temporarily for training
+        timestamp = int(time.time())
+        screenshot_path = f"training_screenshot_{username}_{timestamp}.png"
+        cv2.imwrite(screenshot_path, frame)
+
+        # Return screenshot data
+        import base64
+        _, buffer = cv2.imencode('.png', frame)
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
+
+        return jsonify({
+            "success": True,
+            "screenshot": f"data:image/png;base64,{img_base64}",
+            "username": username,
+            "timestamp": timestamp,
+            "dimensions": {"width": frame.shape[1], "height": frame.shape[0]}
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/save-template', methods=['POST'])
+def save_template():
+    """Save a template from training data"""
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        template_type = data.get('type')  # 'head' for now
+        x = int(data.get('x', 0))
+        y = int(data.get('y', 0))
+        width = int(data.get('width', 0))
+        height = int(data.get('height', 0))
+
+        # Load the screenshot
+        timestamp = data.get('timestamp')
+        screenshot_path = f"training_screenshot_{username}_{timestamp}.png"
+
+        if not os.path.exists(screenshot_path):
+            return jsonify({"error": "Screenshot not found"}), 400
+
+        image = cv2.imread(screenshot_path)
+
+        if template_type == 'head':
+            success = training_system.save_head_template(image, x, y, width, height)
+            if success:
+                # Reload templates
+                training_system.load_templates()
+                return jsonify({"success": True, "message": "Head template saved successfully"})
+            else:
+                return jsonify({"error": "Failed to save head template"}), 400
+
+        return jsonify({"error": "Unknown template type"}), 400
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     # For local development, optionally run initial scan
