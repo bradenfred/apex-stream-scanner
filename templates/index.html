@@ -1540,6 +1540,7 @@
                         <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
                             <button id="save-next-btn" class="scan-btn" style="flex: 1; min-width: 120px;">Save & Next Stream</button>
                             <button id="skip-stream-btn" class="scan-btn secondary" style="flex: 1; min-width: 120px;">Skip This Stream</button>
+                            <button id="not-gameplay-btn" class="scan-btn" style="background: linear-gradient(135deg, #fd7e14 0%, #dc3545 100%); flex: 1; min-width: 120px;">Not Gameplay</button>
                             <button id="finish-training-btn" class="scan-btn" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); flex: 1; min-width: 120px;">Finish Training</button>
                         </div>
                     </div>
@@ -1556,6 +1557,7 @@
             // Setup buttons
             modal.querySelector('#save-next-btn').onclick = () => saveAndContinue(modal, currentIndex, totalStreams);
             modal.querySelector('#skip-stream-btn').onclick = () => skipAndContinue(modal, currentIndex, totalStreams);
+            modal.querySelector('#not-gameplay-btn').onclick = () => notGameplayAndContinue(modal, currentIndex, totalStreams);
             modal.querySelector('#finish-training-btn').onclick = () => finishBatchTraining(modal);
 
             // Close on escape key
@@ -1685,6 +1687,26 @@
                     finishBatchTraining();
                 }
             }, 1000);
+        }
+
+        // Mark as "Not Gameplay" and continue (for quality control)
+        function notGameplayAndContinue(modal, currentIndex, totalStreams) {
+            const statusDiv = modal.querySelector('#training-status');
+            statusDiv.textContent = 'Marked as "Not Gameplay" - screenshot shows loading/menu screen';
+            statusDiv.style.color = '#dc3545';
+
+            console.log(`🚫 Stream ${TrainingState.batchStreams[currentIndex].username} marked as "Not Gameplay" - no templates saved`);
+
+            setTimeout(() => {
+                modal.remove();
+                const nextIndex = currentIndex + 1;
+
+                if (nextIndex < totalStreams) {
+                    showBatchTrainingWizard(TrainingState.batchStreams[nextIndex], nextIndex, totalStreams);
+                } else {
+                    finishBatchTraining();
+                }
+            }, 1500);
         }
 
         // Finish batch training
