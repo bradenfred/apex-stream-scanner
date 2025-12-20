@@ -109,7 +109,7 @@ class OCRLearningSystem:
             if (prep_func, lang) not in ordered_variants:
                 ordered_variants.append((prep_func, lang))
 
-        return ordered_variants[:12]  # Limit to 12 for performance
+        return ordered_variants[:8]  # Limit to 8 most effective variants for speed
 
     def get_detection_stats(self):
         """Return statistics about OCR performance"""
@@ -334,7 +334,7 @@ def get_twitch_token():
     print(f"Token fetched successfully: {token[:10]}...")
     return token
 
-def get_apex_streams(token, limit=200):
+def get_apex_streams(token, limit=400):
     if not token:
         print("No token available, skipping streams fetch.")
         return []
@@ -347,7 +347,7 @@ def get_apex_streams(token, limit=200):
     all_streams = []
     cursor = None
     pages = 0
-    while len(all_streams) < limit and pages < 5:  # Limit to 5 pages to avoid too many
+    while len(all_streams) < limit and pages < 8:  # Increased to 8 pages for better coverage
         params = {
             "game_id": "511224",  # Apex Legends game ID
             "type": "live",
@@ -663,7 +663,7 @@ def fetch_and_update_streams():
     with streams_lock:
         qualifying_streams.clear()
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=15) as executor:  # Increased for better parallel processing
         futures = [executor.submit(process_stream, stream) for stream in streams]
         completed = 0
         for future in as_completed(futures):
