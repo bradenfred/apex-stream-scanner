@@ -423,6 +423,9 @@
                     <button id="train-btn" class="scan-btn secondary" onclick="startTraining()" aria-label="Train OCR with manual examples">
                         <span class="btn-text">Train Scanner</span>
                     </button>
+                    <button id="batch-train-btn" class="scan-btn" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);" onclick="startBatchTraining()" aria-label="Start automated training wizard">
+                        <span class="btn-text">Advanced Training</span>
+                    </button>
                 </div>
                 <div class="status-info">
                     <time class="last-updated" id="last-updated-time" datetime="{{ last_updated }}">
@@ -1041,9 +1044,13 @@
         // Training system state
         const TrainingState = {
             isTraining: false,
+            isBatchTraining: false,
             currentScreenshot: null,
             currentUsername: null,
-            currentTimestamp: null
+            currentTimestamp: null,
+            batchStreams: [],
+            currentStreamIndex: 0,
+            totalTemplatesSaved: 0
         };
 
         // Start training process
@@ -1306,6 +1313,271 @@
             TrainingState.currentScreenshot = null;
             TrainingState.currentUsername = null;
             TrainingState.currentTimestamp = null;
+        }
+
+        // Start batch training wizard
+        async function startBatchTraining() {
+            if (TrainingState.isBatchTraining) {
+                showNotification('Batch training already in progress', 'warning');
+                return;
+            }
+
+            // Get training parameters
+            const numStreams = prompt('How many streams to train on? (5-15)', '10');
+            if (!numStreams || isNaN(numStreams) || numStreams < 5 || numStreams > 15) {
+                showNotification('Please enter a number between 5 and 15', 'warning');
+                return;
+            }
+
+            const focus = confirm('Include both squads and kills training? (OK = both, Cancel = kills only)') ? 'both' : 'kills';
+
+            TrainingState.isBatchTraining = true;
+            TrainingState.currentStreamIndex = 0;
+            TrainingState.totalTemplatesSaved = 0;
+
+            try {
+                showNotification(`Starting batch training on ${numStreams} streams...`, 'info');
+
+                const response = await fetch('/batch-training', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        num_streams: parseInt(numStreams),
+                        focus: focus
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                TrainingState.batchStreams = data.training_streams;
+
+                // Start the wizard with the first stream
+                showBatchTrainingWizard(data.training_streams[0], 0, data.training_streams.length);
+
+            } catch (error) {
+                console.error('Batch training setup failed:', error);
+                showNotification(`Failed to start batch training: ${error.message}`, 'error');
+                TrainingState.isBatchTraining = false;
+            }
+        }
+
+        // Show batch training wizard interface
+        function showBatchTrainingWizard(streamData, currentIndex, totalStreams) {
+            const progressPercent = Math.round(((currentIndex) / totalStreams) * 100);
+
+            // Create modal overlay
+            const modal = document.createElement('div');
+            modal.id = 'training-modal';
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.8);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+            `;
+
+            modal.innerHTML = `
+                <div style="background: white; padding: 30px; border-radius: 12px; max-width: 900px; width: 90%; max-height: 90vh; overflow-y: auto;">
+                    <h2 style="margin-top: 0; color: #2c3e50;">🎯 Advanced Training Wizard</h2>
+
+                    <div style="margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span><strong>Stream ${currentIndex + 1} of ${totalStreams}</strong></span>
+                            <span><strong>${streamData.username}</strong> (${streamData.viewers} viewers)</span>
+                        </div>
+                        <div style="width: 100%; background: #e9ecef; border-radius: 10px; height: 8px;">
+                            <div style="width: ${progressPercent}%; background: linear-gradient(90deg, #17a2b8, #138496); border-radius: 10px; height: 100%; transition: width 0.3s ease;"></div>
+                        </div>
+                        <div style="text-align: center; margin-top: 5px; font-size: 0.9em; color: #666;">
+                            ${TrainingState.totalTemplatesSaved} templates saved so far
+                        </div>
+                    </div>
+
+                    <p><strong>Instructions:</strong> Draw rectangles around the HUD elements you want the scanner to detect:</p>
+                    <ul style="margin-bottom: 20px;">
+                        <li><strong>Squads text:</strong> Draw a box around "X squads left" or similar text</li>
+                        <li><strong>Head icons:</strong> Draw boxes around kill count head silhouettes</li>
+                        <li><strong>Skip if unclear:</strong> Use the Skip button for streams with poor HUD visibility</li>
+                    </ul>
+
+                    <div id="stream-loading" style="text-align: center; padding: 40px;">
+                        <div class="loading" style="width: 40px; height: 40px;"></div>
+                        <p style="margin-top: 20px;">Capturing screenshot from ${streamData.username}'s stream...</p>
+                    </div>
+
+                    <div id="training-content" style="display: none;">
+                        <div style="position: relative; margin: 20px 0; border: 2px solid #dee2e6; border-radius: 8px;">
+                            <img id="training-image" alt="Stream screenshot for training" style="max-width: 100%; height: auto; display: block;" crossorigin="anonymous">
+                            <canvas id="training-canvas" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
+                        </div>
+
+                        <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button id="save-next-btn" class="scan-btn" style="flex: 1; min-width: 120px;">Save & Next Stream</button>
+                            <button id="skip-stream-btn" class="scan-btn secondary" style="flex: 1; min-width: 120px;">Skip This Stream</button>
+                            <button id="finish-training-btn" class="scan-btn" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); flex: 1; min-width: 120px;">Finish Training</button>
+                        </div>
+                    </div>
+
+                    <div id="training-status" style="margin-top: 15px; font-weight: bold;"></div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            // Capture screenshot for this stream
+            captureStreamScreenshot(streamData.username, modal);
+
+            // Setup buttons
+            modal.querySelector('#save-next-btn').onclick = () => saveAndContinue(modal, currentIndex, totalStreams);
+            modal.querySelector('#skip-stream-btn').onclick = () => skipAndContinue(modal, currentIndex, totalStreams);
+            modal.querySelector('#finish-training-btn').onclick = () => finishBatchTraining(modal);
+
+            // Close on escape key
+            document.addEventListener('keydown', function closeOnEscape(e) {
+                if (e.key === 'Escape') {
+                    finishBatchTraining(modal);
+                    document.removeEventListener('keydown', closeOnEscape);
+                }
+            });
+        }
+
+        // Capture screenshot for batch training
+        async function captureStreamScreenshot(username, modal) {
+            try {
+                const response = await fetch(`/capture-screenshot/${encodeURIComponent(username)}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                // Update modal with screenshot
+                const loadingDiv = modal.querySelector('#stream-loading');
+                const contentDiv = modal.querySelector('#training-content');
+                const img = modal.querySelector('#training-image');
+                const canvas = modal.querySelector('#training-canvas');
+
+                img.src = data.screenshot;
+                TrainingState.currentScreenshot = data.screenshot;
+                TrainingState.currentUsername = data.username;
+                TrainingState.currentTimestamp = data.timestamp;
+
+                img.onload = () => {
+                    canvas.width = img.offsetWidth;
+                    canvas.height = img.offsetHeight;
+                    setupCanvasDrawing(canvas, img);
+
+                    loadingDiv.style.display = 'none';
+                    contentDiv.style.display = 'block';
+                };
+
+            } catch (error) {
+                console.error('Screenshot capture failed:', error);
+                const loadingDiv = modal.querySelector('#stream-loading');
+                loadingDiv.innerHTML = `
+                    <p style="color: #dc3545;">Failed to capture screenshot from ${username}'s stream.</p>
+                    <button onclick="location.reload()" class="scan-btn secondary">Retry</button>
+                `;
+            }
+        }
+
+        // Save templates and continue to next stream
+        async function saveAndContinue(modal, currentIndex, totalStreams) {
+            const canvas = modal.querySelector('#training-canvas');
+            const rectangles = canvas.rectangles || [];
+
+            if (rectangles.length === 0) {
+                showNotification('Please draw at least one rectangle around the elements to detect.', 'warning');
+                return;
+            }
+
+            const statusDiv = modal.querySelector('#training-status');
+            statusDiv.textContent = 'Saving training data...';
+            statusDiv.style.color = '#007bff';
+
+            try {
+                // Save template rectangles
+                for (let i = 0; i < rectangles.length; i++) {
+                    const rect = rectangles[i];
+
+                    // Scale coordinates to original image size
+                    const img = modal.querySelector('#training-image');
+                    const scaleX = TrainingState.currentScreenshot ? 1920 / img.offsetWidth : 1; // Assume 1920p if no dimensions
+                    const scaleY = TrainingState.currentScreenshot ? 1080 / img.offsetHeight : 1;
+
+                    const scaledRect = {
+                        x: Math.round(rect.x * scaleX),
+                        y: Math.round(rect.y * scaleY),
+                        width: Math.round(rect.width * scaleX),
+                        height: Math.round(rect.height * scaleY)
+                    };
+
+                    await saveTemplate('head', TrainingState.currentUsername, TrainingState.currentTimestamp, scaledRect);
+                    TrainingState.totalTemplatesSaved++;
+                }
+
+                statusDiv.textContent = `Saved ${rectangles.length} templates! Moving to next stream...`;
+                statusDiv.style.color = '#28a745';
+
+                // Move to next stream after a short delay
+                setTimeout(() => {
+                    modal.remove();
+                    const nextIndex = currentIndex + 1;
+
+                    if (nextIndex < totalStreams) {
+                        showBatchTrainingWizard(TrainingState.batchStreams[nextIndex], nextIndex, totalStreams);
+                    } else {
+                        finishBatchTraining();
+                    }
+                }, 1500);
+
+            } catch (error) {
+                console.error('Failed to save training data:', error);
+                statusDiv.textContent = `Error saving training data: ${error.message}`;
+                statusDiv.style.color = '#dc3545';
+            }
+        }
+
+        // Skip current stream and continue
+        function skipAndContinue(modal, currentIndex, totalStreams) {
+            const statusDiv = modal.querySelector('#training-status');
+            statusDiv.textContent = 'Skipping this stream...';
+            statusDiv.style.color = '#ffc107';
+
+            setTimeout(() => {
+                modal.remove();
+                const nextIndex = currentIndex + 1;
+
+                if (nextIndex < totalStreams) {
+                    showBatchTrainingWizard(TrainingState.batchStreams[nextIndex], nextIndex, totalStreams);
+                } else {
+                    finishBatchTraining();
+                }
+            }, 1000);
+        }
+
+        // Finish batch training
+        function finishBatchTraining(modal = null) {
+            if (modal) {
+                modal.remove();
+            }
+
+            TrainingState.isBatchTraining = false;
+            TrainingState.batchStreams = [];
+            TrainingState.currentStreamIndex = 0;
+
+            showNotification(`Batch training complete! Saved ${TrainingState.totalTemplatesSaved} templates from ${TrainingState.batchStreams.length} streams.`, 'success');
+
+            TrainingState.totalTemplatesSaved = 0;
         }
 
         // Initialize when DOM is ready

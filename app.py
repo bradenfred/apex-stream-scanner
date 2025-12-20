@@ -919,6 +919,41 @@ def stop_fetch():
     print("Stop signal sent to scanning process")
     return jsonify({"message": "Stop signal sent - scan will halt soon"})
 
+@app.route('/batch-training', methods=['POST'])
+def batch_training():
+    """Start batch training session with multiple streams"""
+    try:
+        data = request.get_json()
+        num_streams = min(int(data.get('num_streams', 10)), 20)  # Max 20 streams
+        focus = data.get('focus', 'both')  # 'squads', 'kills', or 'both'
+
+        # Get training streams (similar to regular scanning but prioritize variety)
+        token = get_twitch_token()
+        if not token:
+            return jsonify({"error": "Failed to get Twitch token"}), 500
+
+        streams = get_apex_streams(token, limit=num_streams)
+
+        # Filter and prioritize streams for training
+        training_streams = []
+        for stream in streams[:num_streams]:
+            training_streams.append({
+                "username": stream["user_login"],
+                "viewers": stream["viewer_count"],
+                "url": f"https://www.twitch.tv/{stream['user_login']}"
+            })
+
+        return jsonify({
+            "success": True,
+            "training_streams": training_streams,
+            "total_streams": len(training_streams),
+            "focus": focus
+        })
+
+    except Exception as e:
+        print(f"Batch training error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     # For local development, optionally run initial scan
     if os.environ.get('RUN_INITIAL_SCAN', 'false').lower() == 'true':
