@@ -1,12 +1,6 @@
 flask
 requests
-opencv-python
+opencv-python-headless
 pytesseract
 streamlink
-easyocr
-paddlepaddle
-torch
-torchvision
-transformers
 Pillow
-ultralytics  # For YOLOv8 if we add it later

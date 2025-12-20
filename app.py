@@ -10,12 +10,7 @@ from flask import Flask, render_template, redirect, url_for, jsonify, request
 import threading
 import gc
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from statistics import mode  # For majority vote if needed
-import difflib
 import numpy as np
-import easyocr
-import torch
-from paddleocr import PaddleOCR
 
 # Set Tesseract path (adjust for your system; VS Code will use your system PATH)
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Example for Windows; comment out if on macOS/Linux
@@ -42,37 +37,17 @@ if not CLIENT_ID or not CLIENT_SECRET:
 
 app = Flask(__name__)
 
-# Check for GPU availability (including AMD if ROCm installed)
-if torch.cuda.is_available():
-    print("GPU available for PyTorch/easyocr")
-else:
-    print("GPU not available for PyTorch, falling back to CPU")
+# GPU check removed for lightweight deployment
+print("Running in lightweight mode - using CPU for OCR processing")
 
+# Initialize Tesseract OCR (lightweight for cloud deployment)
 try:
-    import paddle
-    paddle_device = 'gpu' if paddle.device.is_compiled_with_cuda() else 'cpu'  # Note: AMD/ROCm not supported on Windows; use Linux for ROCm
-    if paddle_device == 'gpu':
-        paddle.set_device('gpu')
-    paddle_ocr = PaddleOCR(use_angle_cls=True, lang='en')
-    print(f"PaddleOCR initialized on {paddle_device} for scene text extraction")
+    # Test Tesseract installation
+    version = pytesseract.get_tesseract_version()
+    print(f"Tesseract OCR initialized: {version}")
 except Exception as e:
-    print(f"PaddlePaddle GPU check failed: {e}")
-    paddle.set_device('cpu')
-    paddle_ocr = PaddleOCR(use_angle_cls=True, lang='en')
-
-# Initialize OCR readers (PaddleOCR for primary scene text, GPU if available)
-# GOT-OCR commented out for simplicity; enable if needed
-# got_ocr_model = None
-# got_tokenizer = None
-# if torch.cuda.is_available():
-#     try:
-#         got_ocr_model = AutoModel.from_pretrained('stepfun-ai/GOT-OCR2_0', trust_remote_code=True, low_cpu_mem_usage=True, device_map='cuda', use_safetensors=True).eval().cuda()
-#         got_tokenizer = AutoTokenizer.from_pretrained('stepfun-ai/GOT-OCR2_0', trust_remote_code=True)
-#         print("GOT-OCR loaded on GPU")
-#     except Exception as e:
-#         print(f"Failed to load GOT-OCR: {e}")
-# else:
-#     print("GPU not available, skipping GOT-OCR")
+    print(f"Tesseract not available: {e}")
+    print("OCR functionality will be limited")
 
 # Global list to hold qualifying streams
 qualifying_streams = []
@@ -383,34 +358,32 @@ def capture_frame(username):
 def run_ocr_on_processed(binary, username, variation_idx, lang):
     squads_list = []
 
-    # PaddleOCR for scene text extraction
+    # Tesseract OCR for scene text extraction
     try:
-        result_paddle = paddle_ocr.ocr(binary, cls=True)
-        text_paddle = ' '.join([line[1][0] for line in result_paddle[0] if result_paddle[0]] if result_paddle[0] else [])
-        print(f"Raw OCR text PaddleOCR (v{variation_idx}): '{text_paddle.strip()}'")
-        squads = extract_squads_from_text(text_paddle)
+        text = pytesseract.image_to_string(binary, config='--psm 6')
+        print(f"Raw OCR text Tesseract (v{variation_idx}): '{text.strip()}'")
+        squads = extract_squads_from_text(text)
         if squads:
-            print(f"PaddleOCR v{variation_idx} detected squads: {squads}")
+            print(f"Tesseract v{variation_idx} detected squads: {squads}")
             squads_list.extend(squads)
     except Exception as e:
-        print(f"PaddleOCR error: {e}")
+        print(f"Tesseract error: {e}")
 
     return squads_list
 
 def run_ocr_on_processed_kills(binary, username, variation_idx, lang):
     kills_list = []
 
-    # PaddleOCR for scene text extraction
+    # Tesseract OCR for scene text extraction
     try:
-        result_paddle = paddle_ocr.ocr(binary, cls=True)
-        text_paddle = ' '.join([line[1][0] for line in result_paddle[0] if result_paddle[0]] if result_paddle[0] else [])
-        print(f"Raw OCR text PaddleOCR kills (v{variation_idx}): '{text_paddle.strip()}'")
-        kills = extract_kills_from_text(text_paddle)
+        text = pytesseract.image_to_string(binary, config='--psm 6')
+        print(f"Raw OCR text Tesseract kills (v{variation_idx}): '{text.strip()}'")
+        kills = extract_kills_from_text(text)
         if kills:
-            print(f"PaddleOCR v{variation_idx} detected kills: {kills}")
+            print(f"Tesseract v{variation_idx} detected kills: {kills}")
             kills_list.extend(kills)
     except Exception as e:
-        print(f"PaddleOCR kills error: {e}")
+        print(f"Tesseract kills error: {e}")
 
     return kills_list
 
