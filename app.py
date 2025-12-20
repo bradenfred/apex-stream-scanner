@@ -459,7 +459,7 @@ def get_apex_streams(token, limit=400):
     print(f"Selected {len(streams)} streams for OCR processing (prioritizing smaller streams)")
     return streams
 
-def capture_frame(username, timeout_seconds=10):
+def capture_frame(username, timeout_seconds=5):
     print(f"Capturing frame for {username} (timeout: {timeout_seconds}s)...")
     try:
         import threading
@@ -635,19 +635,31 @@ def ocr_squad_count(frame, username):
 
         hud_cropped = frame[hud_crop_y_start:hud_crop_y_end, hud_crop_x_start:hud_crop_x_end]
 
-        # Use adaptive preprocessing order based on learning
-        preprocessing_order = ocr_learner.adaptive_preprocessing_order()
+        # FAST PATH: Try visual kill detection first (much faster than OCR)
+        kills_from_visual = None
+        if training_system.get_head_templates():
+            for head_template in training_system.get_head_templates():
+                visual_kills = detect_kills_visual(hud_cropped, head_template)
+                if visual_kills is not None and visual_kills > 0:
+                    kills_from_visual = visual_kills
+                    print(f"⚡ FAST VISUAL: Found {visual_kills} kills using template")
+                    break
 
-        # Process the entire HUD region for both squads and kills
+        # Use adaptive preprocessing order based on learning (limited to 4 best variants)
+        preprocessing_order = ocr_learner.adaptive_preprocessing_order()[:4]  # LIMIT to 4 variants for speed
+
+        # Process preprocessing variants in parallel for maximum speed
         all_squads = []
         all_kills = []
         variant_results = []
 
-        for idx, (prep_func, lang) in enumerate(preprocessing_order, 1):
-            binary = prep_func(hud_cropped)
+        def process_variant(variant_info):
+            """Process a single preprocessing variant"""
+            idx, (prep_func, lang) = variant_info
 
-            # Run OCR and get confidence data
             try:
+                binary = prep_func(hud_cropped)
+
                 # Get detailed OCR data with confidence
                 ocr_data = pytesseract.image_to_data(binary, config='--psm 6', output_type=pytesseract.Output.DICT)
                 text = ' '.join([word for word in ocr_data['text'] if word.strip()])
@@ -657,63 +669,70 @@ def ocr_squad_count(frame, username):
                 valid_confidences = [c for c in confidences if c >= 0]
                 avg_confidence = sum(valid_confidences) / len(valid_confidences) if valid_confidences else 0
 
-                print(f"Raw OCR text Tesseract (v{idx}): '{text.strip()}' (conf: {avg_confidence:.1f}%)")
-
                 # Extract both squads and kills from the same OCR text
                 squads_from_text = extract_squads_from_text(text)
                 kills_from_text = extract_kills_from_text(text)
-
-                # Also try visual kill detection using saved templates
-                kills_from_visual = None
-                if training_system.get_head_templates():
-                    # Try visual detection with each saved head template
-                    for head_template in training_system.get_head_templates():
-                        visual_kills = detect_kills_visual(hud_cropped, head_template)
-                        if visual_kills is not None:
-                            kills_from_visual = visual_kills
-                            print(f"Visual detection found {visual_kills} kills using template")
-                            break
 
                 # Combine text and visual kill detections
                 all_kills_from_variant = kills_from_text[:]
                 if kills_from_visual is not None:
                     all_kills_from_variant.append(kills_from_visual)
 
-                # Record this detection for learning
                 successful = bool(squads_from_text or all_kills_from_variant)
-                ocr_learner.record_detection(
-                    username=username,
-                    preprocessing_variant=idx,
-                    ocr_text=text,
-                    confidence=avg_confidence / 100.0,  # Convert to 0-1 scale
-                    squads_found=squads_from_text,
-                    kills_found=all_kills_from_variant
-                )
 
-                variant_results.append({
+                return {
                     'variant': idx,
                     'text': text,
                     'confidence': avg_confidence,
                     'squads': squads_from_text,
                     'kills': all_kills_from_variant,
-                    'successful': successful
-                })
-
-                if squads_from_text:
-                    print(f"Tesseract v{idx} detected squads: {squads_from_text}")
-                    all_squads.extend(squads_from_text)
-
-                if all_kills_from_variant:
-                    print(f"Tesseract v{idx} detected kills: {all_kills_from_variant}")
-                    all_kills.extend(all_kills_from_variant)
-
-                # Early exit if we found good results with high confidence
-                if successful and avg_confidence > 70:
-                    print(f"High-confidence detection found, stopping early")
-                    break
+                    'successful': successful,
+                    'raw_text': text
+                }
 
             except Exception as e:
                 print(f"Tesseract error on variant {idx}: {e}")
+                return None
+
+        # Process variants in parallel using ThreadPoolExecutor
+        variant_infos = [(idx, prep_info) for idx, prep_info in enumerate(preprocessing_order, 1)]
+
+        with ThreadPoolExecutor(max_workers=min(4, len(variant_infos))) as variant_executor:
+            variant_futures = [variant_executor.submit(process_variant, info) for info in variant_infos]
+
+            for future in as_completed(variant_futures):
+                result = future.result()
+                if result:
+                    variant_results.append(result)
+
+                    # Print results
+                    print(f"⚡ OCR v{result['variant']}: '{result['raw_text'].strip()}' (conf: {result['confidence']:.1f}%)")
+
+                    if result['squads']:
+                        print(f"  → Squads: {result['squads']}")
+                        all_squads.extend(result['squads'])
+
+                    if result['kills']:
+                        print(f"  → Kills: {result['kills']}")
+                        all_kills.extend(result['kills'])
+
+                    # Record this detection for learning
+                    ocr_learner.record_detection(
+                        username=username,
+                        preprocessing_variant=result['variant'],
+                        ocr_text=result['raw_text'],
+                        confidence=result['confidence'] / 100.0,
+                        squads_found=result['squads'],
+                        kills_found=result['kills']
+                    )
+
+                    # Early exit if we found good results with high confidence
+                    if result['successful'] and result['confidence'] > 70:
+                        print(f"🎯 High-confidence detection found, stopping early")
+                        # Cancel remaining futures
+                        for f in variant_futures:
+                            f.cancel()
+                        break
 
         # Ensemble voting: if multiple variants agree on the same numbers, be more confident
         final_squads = None
@@ -814,7 +833,7 @@ def fetch_and_update_streams():
     with streams_lock:
         qualifying_streams.clear()
 
-    with ThreadPoolExecutor(max_workers=12) as executor:  # Optimized for Railway free tier
+    with ThreadPoolExecutor(max_workers=6) as executor:  # Reduced from 12 to prevent resource contention
         futures = [executor.submit(process_stream, stream) for stream in streams]
         completed = 0
         for future in as_completed(futures):
