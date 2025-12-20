@@ -1153,50 +1153,96 @@
             });
         }
 
-        // Setup canvas drawing functionality
+        // Setup canvas drawing functionality - BULLETPROOF VERSION
         function setupCanvasDrawing(canvas, img) {
-            console.log('Setting up canvas drawing...');
+            console.log('🎨 Setting up BULLETPROOF canvas drawing...');
+
+            // Add status indicator
+            const statusDiv = document.createElement('div');
+            statusDiv.id = 'canvas-status';
+            statusDiv.style.cssText = `
+                position: absolute;
+                bottom: 10px;
+                right: 10px;
+                background: rgba(0,123,255,0.9);
+                color: white;
+                padding: 5px 10px;
+                border-radius: 4px;
+                font-size: 11px;
+                z-index: 1000;
+                pointer-events: none;
+            `;
+            statusDiv.textContent = 'Canvas Ready - Draw rectangles!';
+            canvas.parentElement.appendChild(statusDiv);
+
             const ctx = canvas.getContext('2d');
             let isDrawing = false;
             let startX, startY;
             let rectangles = [];
 
-            // Prevent default drag behavior on image
-            img.addEventListener('dragstart', (e) => {
-                console.log('Preventing image drag');
-                e.preventDefault();
-            });
-            img.addEventListener('mousedown', (e) => {
-                console.log('Preventing image mousedown');
-                e.preventDefault();
-            });
-
-            canvas.style.pointerEvents = 'auto';
+            // Force canvas to be interactive
+            canvas.style.position = 'absolute';
+            canvas.style.top = '0';
+            canvas.style.left = '0';
+            canvas.style.zIndex = '50';
             canvas.style.cursor = 'crosshair';
-            console.log('Canvas size:', canvas.width, 'x', canvas.height);
-            console.log('Canvas style:', canvas.style.cssText);
+            canvas.style.pointerEvents = 'auto';
 
-            canvas.addEventListener('mousedown', (e) => {
-                console.log('Canvas mousedown detected!');
+            console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
+            console.log('Canvas positioned at:', canvas.offsetTop, canvas.offsetLeft);
+
+            // Test drawing function
+            function testDraw() {
+                ctx.fillStyle = 'rgba(255,0,0,0.1)';
+                ctx.fillRect(10, 10, 50, 50);
+                ctx.strokeStyle = '#ff0000';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(10, 10, 50, 50);
+                console.log('✅ Test rectangle drawn on canvas');
+            }
+
+            // Draw test rectangle to verify canvas works
+            testDraw();
+
+            // Prevent ALL image interactions
+            img.style.pointerEvents = 'none';
+            img.style.userSelect = 'none';
+
+            // Mouse event handlers - using both canvas and container
+            const container = canvas.parentElement;
+
+            function handleMouseDown(e) {
+                console.log('🖱️ Mouse down detected at:', e.clientX, e.clientY);
+
+                // Update status
+                statusDiv.textContent = 'Drawing...';
+                statusDiv.style.background = 'rgba(40, 167, 69, 0.9)';
+
                 e.preventDefault();
                 e.stopPropagation();
+
                 isDrawing = true;
                 const rect = canvas.getBoundingClientRect();
                 startX = e.clientX - rect.left;
                 startY = e.clientY - rect.top;
-                console.log('Starting draw at:', startX, startY);
-            });
 
-            canvas.addEventListener('mousemove', (e) => {
+                console.log('📍 Starting rectangle at canvas coords:', startX, startY);
+            }
+
+            function handleMouseMove(e) {
                 if (!isDrawing) return;
 
                 e.preventDefault();
+
                 const rect = canvas.getBoundingClientRect();
                 const currentX = e.clientX - rect.left;
                 const currentY = e.clientY - rect.top;
 
-                // Clear and redraw
+                // Clear canvas completely
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Redraw test rectangle
+                testDraw();
 
                 // Draw existing rectangles
                 rectangles.forEach(r => {
@@ -1211,13 +1257,15 @@
                 ctx.strokeStyle = '#28a745';
                 ctx.lineWidth = 3;
                 ctx.strokeRect(startX, startY, width, height);
-            });
+            }
 
-            canvas.addEventListener('mouseup', (e) => {
+            function handleMouseUp(e) {
                 if (!isDrawing) return;
 
-                console.log('Canvas mouseup detected!');
+                console.log('✋ Mouse up detected - completing rectangle');
+
                 e.preventDefault();
+
                 const rect = canvas.getBoundingClientRect();
                 const endX = e.clientX - rect.left;
                 const endY = e.clientY - rect.top;
@@ -1225,37 +1273,73 @@
                 const width = endX - startX;
                 const height = endY - startY;
 
-                console.log('Rectangle size:', width, height);
+                console.log('📐 Rectangle dimensions:', width, 'x', height);
 
-                if (Math.abs(width) > 10 && Math.abs(height) > 10) {
-                    rectangles.push({
+                if (Math.abs(width) > 20 && Math.abs(height) > 20) {
+                    const newRect = {
                         x: Math.min(startX, endX),
                         y: Math.min(startY, endY),
                         width: Math.abs(width),
                         height: Math.abs(height)
-                    });
-                    console.log('Rectangle saved, total rectangles:', rectangles.length);
+                    };
+
+                    rectangles.push(newRect);
+
+                    // Update status
+                    statusDiv.textContent = `Rectangle saved! (${rectangles.length} total)`;
+                    statusDiv.style.background = 'rgba(255, 193, 7, 0.9)';
+
+                    console.log('💾 Rectangle saved:', newRect);
+                    console.log('📊 Total rectangles:', rectangles.length);
+
+                    // Reset status after 2 seconds
+                    setTimeout(() => {
+                        statusDiv.textContent = 'Canvas Ready - Draw rectangles!';
+                        statusDiv.style.background = 'rgba(0,123,255,0.9)';
+                    }, 2000);
+
                 } else {
-                    console.log('Rectangle too small, not saved');
+                    console.log('❌ Rectangle too small, discarded');
+                    statusDiv.textContent = 'Rectangle too small - try again!';
+                    statusDiv.style.background = 'rgba(220, 53, 69, 0.9)';
+
+                    setTimeout(() => {
+                        statusDiv.textContent = 'Canvas Ready - Draw rectangles!';
+                        statusDiv.style.background = 'rgba(0,123,255,0.9)';
+                    }, 2000);
                 }
 
                 isDrawing = false;
 
                 // Redraw all rectangles
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+                testDraw();
                 rectangles.forEach(r => {
                     ctx.strokeStyle = '#007bff';
                     ctx.lineWidth = 3;
                     ctx.strokeRect(r.x, r.y, r.width, r.height);
                 });
-            });
+            }
 
-            // Prevent context menu on right click
+            // Add event listeners to both canvas and container
+            canvas.addEventListener('mousedown', handleMouseDown);
+            container.addEventListener('mousedown', handleMouseDown);
+
+            canvas.addEventListener('mousemove', handleMouseMove);
+            container.addEventListener('mousemove', handleMouseMove);
+
+            canvas.addEventListener('mouseup', handleMouseUp);
+            container.addEventListener('mouseup', handleMouseUp);
+
+            // Prevent context menu
             canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+            container.addEventListener('contextmenu', (e) => e.preventDefault());
 
             // Store rectangles for later use
             canvas.rectangles = rectangles;
-            console.log('Canvas drawing setup complete');
+
+            console.log('🎯 BULLETPROOF canvas drawing setup complete!');
+            console.log('📝 Instructions: Click and drag to draw rectangles around HUD elements');
         }
 
         // Save training data
@@ -1445,9 +1529,12 @@
                     </div>
 
                     <div id="training-content" style="display: none;">
-                        <div style="position: relative; margin: 20px 0; border: 2px solid #dee2e6; border-radius: 8px; display: inline-block;">
+                        <div id="drawing-container" style="position: relative; margin: 20px 0; border: 2px solid #dee2e6; border-radius: 8px; display: inline-block; background: #f8f9fa;">
+                            <div id="drawing-instructions" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 1000; pointer-events: none;">
+                                Click and drag to draw rectangles around HUD elements
+                            </div>
                             <img id="training-image" alt="Stream screenshot for training" style="max-width: 100%; height: auto; display: block; user-select: none; -webkit-user-drag: none;" crossorigin="anonymous">
-                            <canvas id="training-canvas" style="position: absolute; top: 0; left: 0; pointer-events: auto; cursor: crosshair !important; z-index: 10;"></canvas>
+                            <canvas id="training-canvas" style="position: absolute; top: 0; left: 0; pointer-events: auto; cursor: crosshair; z-index: 50;"></canvas>
                         </div>
 
                         <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
