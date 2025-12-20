@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Flask App",
+            "type": "python",
+            "request": "launch",
+            "module": "flask",
+            "env": {
+                "FLASK_APP": "app.py",
+                "FLASK_DEBUG": "1",
+                "TWITCH_CLIENT_ID": "zigwtbq22leafni8xdujrji85zadwh",  // ← Paste your ID
+                "TWITCH_CLIENT_SECRET": "uco3svqpy61e2m4cwsnck75qmbktsw"  // ← Paste your Secret
+            },
+            "args": ["run", "--no-reload"],
+            "jinja": true
+        }
+    ]
+}

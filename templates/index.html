@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Real-time Apex Legends stream scanner for endgame and high-kill matches">
+    <title>Apex Stream Scanner - Find Endgame & High-Kill Matches</title>
+    <style>
+        /* Base styles and typography */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        /* Header styles */
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2.5rem;
+            font-weight: 700;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        header p {
+            margin: 0;
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        /* Main content area */
+        main {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        /* Section styling */
+        section {
+            padding: 30px;
+        }
+
+        section h2 {
+            margin: 0 0 20px 0;
+            color: #2c3e50;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        /* Controls section */
+        .control-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .scan-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .scan-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .scan-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .status-info {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        /* Progress section */
+        .progress-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            height: 24px;
+            overflow: hidden;
+            margin: 10px 0;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745 0%, #20c997 100%);
+            border-radius: 10px;
+            width: 0%;
+            transition: width 0.3s ease;
+            position: relative;
+        }
+
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .progress-status {
+            margin: 0;
+            font-weight: 500;
+            color: #495057;
+        }
+
+        /* Filters section */
+        .filter-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            background: #6c757d;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .filter-btn:hover {
+            background: #5a6268;
+            transform: translateY(-1px);
+        }
+
+        .filter-btn.active {
+            background: #007bff;
+            box-shadow: 0 2px 8px rgba(0,123,255,0.3);
+        }
+
+        /* Results table */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        .streams-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .streams-table thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .streams-table th {
+            padding: 15px 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .streams-table td {
+            padding: 12px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .streams-table tbody tr {
+            transition: background-color 0.2s ease;
+        }
+
+        .streams-table tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .streams-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Status classes */
+        .squads-low {
+            color: #dc3545;
+            font-weight: 700;
+            background: rgba(220, 53, 69, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .squads-medium {
+            color: #fd7e14;
+            font-weight: 600;
+            background: rgba(253, 126, 20, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .squads-high {
+            color: #28a745;
+            font-weight: 500;
+        }
+
+        .kills-high {
+            color: #e74c3c;
+            font-weight: 700;
+            background: rgba(231, 76, 60, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        /* Links */
+        .watch-link {
+            color: #007bff;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+
+        .watch-link:hover {
+            color: #0056b3;
+            text-decoration: underline;
+        }
+
+        /* No results message */
+        .no-results {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6c757d;
+        }
+
+        .no-results p {
+            margin: 0;
+            font-size: 1.1rem;
+        }
+
+        /* Loading animation */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            color: #6c757d;
+            font-size: 0.9rem;
+            margin-top: 30px;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            main {
+                border-radius: 8px;
+            }
+
+            section {
+                padding: 20px;
+            }
+
+            .control-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .scan-btn {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .streams-table {
+                font-size: 14px;
+            }
+
+            .streams-table th,
+            .streams-table td {
+                padding: 8px 6px;
+            }
+
+            .filter-buttons {
+                justify-content: center;
+            }
+
+            .filter-btn {
+                flex: 1;
+                min-width: 120px;
+            }
+        }
+
+        /* Debug panel */
+        .debug-panel {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+        }
+
+        .debug-panel h3 {
+            margin: 0 0 10px 0;
+            color: #495057;
+            font-size: 1rem;
+        }
+
+        .debug-content {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            background: #ffffff;
+            padding: 10px;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        .debug-toggle {
+            margin-top: 10px;
+            padding: 6px 12px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+
+        .debug-toggle:hover {
+            background: #5a6268;
+        }
+
+        @media (max-width: 480px) {
+            header h1 {
+                font-size: 2rem;
+            }
+
+            .filter-btn {
+                padding: 8px 12px;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Apex Legends Stream Scanner</h1>
+        <p>Find streams with low squads remaining or high kill counts</p>
+    </header>
+
+    <main>
+        <section class="scanner-controls">
+            <div class="control-header">
+                <button id="refresh-btn" class="scan-btn" onclick="startStreamFetch()" aria-label="Scan for Apex streams">
+                    <span class="btn-text">Scan Streams</span>
+                </button>
+                <div class="status-info">
+                    <time class="last-updated" id="last-updated-time" datetime="{{ last_updated }}">
+                        Last updated: {{ last_updated }}
+                    </time>
+                </div>
+            </div>
+
+            <div id="progress-container" class="progress-section" style="display: none;" role="status" aria-live="polite">
+                <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <p id="progress-text" class="progress-status">Starting scan...</p>
+                <div id="debug-info" class="debug-panel" style="display: none;">
+                    <h3>🔍 Debug Information</h3>
+                    <div id="debug-content"></div>
+                </div>
+                <button id="toggle-debug" class="debug-toggle" onclick="toggleDebug()" style="display: none;">Show Debug Info</button>
+            </div>
+        </section>
+
+        <section class="filters-section">
+            <h2>Filter Results</h2>
+            <div class="filter-buttons" role="group" aria-label="Stream filters">
+                <button class="filter-btn active" onclick="filterStreams('all')" aria-pressed="true">All Streams</button>
+                <button class="filter-btn" onclick="filterStreams('squads')" aria-pressed="false">Endgame (≤7 squads)</button>
+                <button class="filter-btn" onclick="filterStreams('kills')" aria-pressed="false">High Kills (>6)</button>
+            </div>
+        </section>
+
+        <section class="results-section">
+            <h2>Stream Results</h2>
+            <div class="table-container">
+                <table class="streams-table" role="table" aria-label="Apex Legends streams">
+                    <thead>
+                        <tr>
+                            <th scope="col">Streamer</th>
+                            <th scope="col">Squads Left</th>
+                            <th scope="col">Kill Count</th>
+                            <th scope="col">Viewers</th>
+                            <th scope="col">Watch Stream</th>
+                        </tr>
+                    </thead>
+                    <tbody id="streams-tbody">
+                        {% for stream in streams %}
+                        <tr>
+                            <td>{{ stream.user }}</td>
+                            <td class="{% if stream.squads and stream.squads <= 3 %}squads-low{% elif stream.squads and stream.squads <= 7 %}squads-medium{% else %}squads-high{% endif %}">
+                                {{ stream.squads if stream.squads else '-' }}
+                            </td>
+                            <td class="{% if stream.kills and stream.kills >= 30 %}kills-high{% else %}{% endif %}">
+                                {{ stream.kills if stream.kills else '-' }}
+                            </td>
+                            <td>{{ stream.viewers }}</td>
+                            <td>
+                                <a href="{{ stream.url }}" class="watch-link" target="_blank" rel="noopener noreferrer" aria-label="Watch {{ stream.user }}'s stream">
+                                    Watch Stream
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                {% if not streams %}
+                <div class="no-results" role="status">
+                    <p>No qualifying streams found. Click "Scan Streams" to search for matches.</p>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 Apex Stream Scanner. Built following modern web development practices.</p>
+    </footer>
+
+    <script>
+        // Application state management
+        const AppState = {
+            isScanning: false,
+            statusInterval: null,
+            autoRefreshInterval: null,
+            currentFilter: 'all',
+
+            // Configuration
+            POLL_INTERVAL: 1000, // 1 second
+            AUTO_REFRESH_INTERVAL: 300000, // 5 minutes
+            RETRY_ATTEMPTS: 3,
+            RETRY_DELAY: 2000 // 2 seconds
+        };
+
+        // DOM element cache for better performance
+        const DOM = {
+            scanBtn: null,
+            progressContainer: null,
+            progressFill: null,
+            progressText: null,
+            lastUpdated: null,
+            streamsTable: null,
+            filterButtons: null
+        };
+
+        // Initialize the application
+        function initializeApp() {
+            cacheDOMElements();
+            setupEventListeners();
+            loadSavedState();
+            setupAutoRefresh();
+            console.log('Apex Stream Scanner initialized');
+        }
+
+        // Cache frequently used DOM elements
+        function cacheDOMElements() {
+            DOM.scanBtn = document.getElementById('refresh-btn');
+            DOM.progressContainer = document.getElementById('progress-container');
+            DOM.progressFill = document.getElementById('progress-fill');
+            DOM.progressText = document.getElementById('progress-text');
+            DOM.lastUpdated = document.getElementById('last-updated-time');
+            DOM.streamsTable = document.querySelector('#streams-tbody');
+            DOM.filterButtons = document.querySelectorAll('.filter-btn');
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            DOM.scanBtn.addEventListener('click', handleScanClick);
+            DOM.filterButtons.forEach(btn => {
+                btn.addEventListener('click', handleFilterClick);
+            });
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', handleKeyboardShortcuts);
+        }
+
+        // Load saved state from localStorage
+        function loadSavedState() {
+            const savedFilter = localStorage.getItem('apexScannerFilter');
+            if (savedFilter) {
+                AppState.currentFilter = savedFilter;
+                updateFilterUI(savedFilter);
+            }
+        }
+
+        // Save state to localStorage
+        function saveState() {
+            localStorage.setItem('apexScannerFilter', AppState.currentFilter);
+        }
+
+        // Setup auto-refresh functionality
+        function setupAutoRefresh() {
+            if (AppState.autoRefreshInterval) {
+                clearInterval(AppState.autoRefreshInterval);
+            }
+
+            AppState.autoRefreshInterval = setInterval(() => {
+                if (!AppState.isScanning) {
+                    console.log('Auto-refreshing streams...');
+                    startStreamFetch(true); // Silent mode for auto-refresh
+                }
+            }, AppState.AUTO_REFRESH_INTERVAL);
+        }
+
+        // Handle scan button click
+        function handleScanClick(event) {
+            event.preventDefault();
+            startStreamFetch();
+        }
+
+        // Handle filter button clicks
+        function handleFilterClick(event) {
+            const filterType = event.target.getAttribute('onclick').match(/'([^']+)'/)[1];
+            AppState.currentFilter = filterType;
+            filterStreams(filterType);
+            saveState();
+        }
+
+        // Handle keyboard shortcuts
+        function handleKeyboardShortcuts(event) {
+            if (event.ctrlKey || event.metaKey) {
+                switch(event.key) {
+                    case 'r':
+                        event.preventDefault();
+                        startStreamFetch();
+                        break;
+                    case '1':
+                        event.preventDefault();
+                        filterStreams('all');
+                        break;
+                    case '2':
+                        event.preventDefault();
+                        filterStreams('squads');
+                        break;
+                    case '3':
+                        event.preventDefault();
+                        filterStreams('kills');
+                        break;
+                }
+            }
+        }
+
+        // Main stream fetching function
+        async function startStreamFetch(silent = false) {
+            if (AppState.isScanning) {
+                showNotification('Scan already in progress', 'warning');
+                return;
+            }
+
+            AppState.isScanning = true;
+            updateScanButton(true, silent);
+
+            try {
+                const response = await fetchWithRetry('/fetch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                if (!silent) {
+                    DOM.progressContainer.style.display = 'block';
+                }
+
+                startStatusPolling();
+
+            } catch (error) {
+                console.error('Failed to start stream fetching:', error);
+                showNotification(`Failed to start scanning: ${error.message}`, 'error');
+                resetScanButton();
+            }
+        }
+
+        // Fetch with retry logic
+        async function fetchWithRetry(url, options, attempts = AppState.RETRY_ATTEMPTS) {
+            for (let i = 0; i < attempts; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response;
+                } catch (error) {
+                    console.warn(`Attempt ${i + 1} failed:`, error);
+                    if (i === attempts - 1) throw error;
+                    await delay(AppState.RETRY_DELAY);
+                }
+            }
+        }
+
+        // Start polling for status updates
+        function startStatusPolling() {
+            if (AppState.statusInterval) {
+                clearInterval(AppState.statusInterval);
+            }
+
+            AppState.statusInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('/status');
+                    const data = await response.json();
+
+                    updateProgress(data);
+
+                    if (!data.is_fetching) {
+                        // Scanning complete
+                        clearInterval(AppState.statusInterval);
+                        AppState.statusInterval = null;
+
+                        updateStreamsTable(data.streams);
+                        updateLastUpdated(data.last_updated);
+                        resetScanButton();
+
+                        DOM.progressContainer.style.display = 'none';
+                        AppState.isScanning = false;
+
+                        showNotification(`Scan complete! Found ${data.streams.length} streams.`, 'success');
+                    }
+                } catch (error) {
+                    console.error('Status polling error:', error);
+                    clearInterval(AppState.statusInterval);
+                    AppState.statusInterval = null;
+                    AppState.isScanning = false;
+                    resetScanButton();
+                    showNotification('Lost connection to scanner', 'error');
+                }
+            }, AppState.POLL_INTERVAL);
+        }
+
+        // Update progress display
+        function updateProgress(data) {
+            if (!data.total_streams) return;
+
+            const percentage = Math.round((data.current_stream / data.total_streams) * 100);
+            DOM.progressFill.style.width = percentage + '%';
+            DOM.progressFill.setAttribute('aria-valuenow', percentage);
+            DOM.progressText.textContent = data.progress;
+        }
+
+        // Update streams table
+        function updateStreamsTable(streams) {
+            if (!DOM.streamsTable) return;
+
+            DOM.streamsTable.innerHTML = '';
+
+            if (streams.length === 0) {
+                const emptyRow = document.createElement('tr');
+                emptyRow.innerHTML = '<td colspan="5" style="text-align: center; padding: 40px; color: #6c757d;">No qualifying streams found. Click "Scan Streams" to search for matches.</td>';
+                DOM.streamsTable.appendChild(emptyRow);
+                return;
+            }
+
+            streams.forEach(stream => {
+                const row = createStreamRow(stream);
+                DOM.streamsTable.appendChild(row);
+            });
+
+            // Reapply current filter
+            filterStreams(AppState.currentFilter, false);
+        }
+
+        // Create a stream table row
+        function createStreamRow(stream) {
+            const row = document.createElement('tr');
+
+            const squadsClass = getSquadsClass(stream.squads);
+            const killsClass = (stream.kills && stream.kills > 6) ? 'kills-high' : '';
+
+            row.innerHTML = `
+                <td>${escapeHtml(stream.user)}</td>
+                <td class="${squadsClass}">${stream.squads || '-'}</td>
+                <td class="${killsClass}">${stream.kills || '-'}</td>
+                <td>${stream.viewers || 0}</td>
+                <td>
+                    <a href="${escapeHtml(stream.url)}" class="watch-link" target="_blank" rel="noopener noreferrer" aria-label="Watch ${escapeHtml(stream.user)}'s stream">
+                        Watch Stream
+                    </a>
+                </td>
+            `;
+
+            return row;
+        }
+
+        // Get CSS class for squads count
+        function getSquadsClass(squads) {
+            if (!squads) return '';
+            if (squads <= 3) return 'squads-low';
+            if (squads <= 7) return 'squads-medium';
+            return 'squads-high';
+        }
+
+        // Update last updated time
+        function updateLastUpdated(timestamp) {
+            if (DOM.lastUpdated) {
+                DOM.lastUpdated.textContent = timestamp;
+                DOM.lastUpdated.setAttribute('datetime', timestamp);
+            }
+        }
+
+        // Update scan button state
+        function updateScanButton(isScanning, silent = false) {
+            if (!DOM.scanBtn) return;
+
+            DOM.scanBtn.disabled = isScanning;
+
+            if (isScanning && !silent) {
+                DOM.scanBtn.innerHTML = '<div class="loading"></div> Scanning...';
+            } else if (!isScanning) {
+                DOM.scanBtn.innerHTML = '<span class="btn-text">Scan Streams</span>';
+            }
+        }
+
+        // Reset scan button
+        function resetScanButton() {
+            updateScanButton(false);
+            AppState.isScanning = false;
+        }
+
+        // Filter streams
+        function filterStreams(type, updateUI = true) {
+            AppState.currentFilter = type;
+
+            if (updateUI) {
+                updateFilterUI(type);
+            }
+
+            const rows = DOM.streamsTable.querySelectorAll('tr');
+
+            rows.forEach(row => {
+                if (row.cells.length < 5) return; // Skip non-data rows
+
+                const squadsCell = row.cells[1].textContent.trim();
+                const killsCell = row.cells[2].textContent.trim();
+
+                let show = false;
+
+                switch (type) {
+                    case 'all':
+                        show = true;
+                        break;
+                    case 'squads':
+                        show = squadsCell !== '-' && parseInt(squadsCell) <= 7;
+                        break;
+                    case 'kills':
+                        show = killsCell !== '-' && parseInt(killsCell) > 6;
+                        break;
+                }
+
+                row.style.display = show ? '' : 'none';
+            });
+        }
+
+        // Update filter button UI
+        function updateFilterUI(activeFilter) {
+            DOM.filterButtons.forEach(btn => {
+                const btnFilter = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
+                const isActive = btnFilter === activeFilter;
+
+                btn.classList.toggle('active', isActive);
+                btn.setAttribute('aria-pressed', isActive);
+            });
+        }
+
+        // Show notification (could be enhanced with a proper notification system)
+        function showNotification(message, type = 'info') {
+            console.log(`[${type.toUpperCase()}] ${message}`);
+
+            // For now, use alert for errors, console for others
+            if (type === 'error') {
+                alert(message);
+            }
+        }
+
+        // HTML escape utility
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Delay utility
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (AppState.statusInterval) {
+                clearInterval(AppState.statusInterval);
+            }
+            if (AppState.autoRefreshInterval) {
+                clearInterval(AppState.autoRefreshInterval);
+            }
+        });
+
+        // Debug functionality
+        function toggleDebug() {
+            const debugPanel = document.getElementById('debug-info');
+            const isVisible = debugPanel.style.display !== 'none';
+            debugPanel.style.display = isVisible ? 'none' : 'block';
+        }
+
+        // Enhanced status polling with debug info
+        function startStatusPolling() {
+            if (AppState.statusInterval) {
+                clearInterval(AppState.statusInterval);
+            }
+
+            let debugLog = [];
+            const startTime = Date.now();
+
+            AppState.statusInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('/status');
+                    const data = await response.json();
+
+                    // Collect debug information
+                    const elapsed = Math.round((Date.now() - startTime) / 1000);
+                    debugLog.push(`[${elapsed}s] ${data.progress} (${data.current_stream || 0}/${data.total_streams || 0})`);
+
+                    // Keep only last 20 entries
+                    if (debugLog.length > 20) {
+                        debugLog = debugLog.slice(-20);
+                    }
+
+                    // Update debug panel
+                    updateDebugInfo(debugLog, data);
+
+                    updateProgress(data);
+
+                    if (!data.is_fetching) {
+                        // Scanning complete
+                        clearInterval(AppState.statusInterval);
+                        AppState.statusInterval = null;
+
+                        updateStreamsTable(data.streams);
+                        updateLastUpdated(data.last_updated);
+                        resetScanButton();
+
+                        DOM.progressContainer.style.display = 'none';
+                        AppState.isScanning = false;
+
+                        // Final debug update
+                        debugLog.push(`[${Math.round((Date.now() - startTime) / 1000)}s] Scan complete! Found ${data.streams.length} streams.`);
+                        updateDebugInfo(debugLog, data);
+
+                        showNotification(`Scan complete! Found ${data.streams.length} streams.`, 'success');
+                    }
+                } catch (error) {
+                    console.error('Status polling error:', error);
+                    clearInterval(AppState.statusInterval);
+                    AppState.statusInterval = null;
+                    AppState.isScanning = false;
+                    resetScanButton();
+
+                    debugLog.push(`[ERROR] ${error.message}`);
+                    updateDebugInfo(debugLog);
+
+                    showNotification('Lost connection to scanner', 'error');
+                }
+            }, AppState.POLL_INTERVAL);
+        }
+
+        // Update debug information display
+        function updateDebugInfo(log, statusData = {}) {
+            const debugContent = document.getElementById('debug-content');
+            const debugToggle = document.getElementById('toggle-debug');
+
+            if (debugContent && log.length > 0) {
+                debugContent.textContent = log.join('\n');
+
+                // Show debug toggle after first status update
+                if (debugToggle && debugToggle.style.display === 'none') {
+                    debugToggle.style.display = 'inline-block';
+                }
+
+                // Auto-scroll to bottom
+                debugContent.scrollTop = debugContent.scrollHeight;
+            }
+        }
+
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeApp);
+        } else {
+            initializeApp();
+        }
+    </script>
+</body>
+</html>
