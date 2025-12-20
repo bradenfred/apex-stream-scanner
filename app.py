@@ -663,7 +663,7 @@ def fetch_and_update_streams():
     with streams_lock:
         qualifying_streams.clear()
 
-    with ThreadPoolExecutor(max_workers=15) as executor:  # Increased for better parallel processing
+    with ThreadPoolExecutor(max_workers=12) as executor:  # Optimized for Railway free tier
         futures = [executor.submit(process_stream, stream) for stream in streams]
         completed = 0
         for future in as_completed(futures):
