@@ -810,10 +810,12 @@ def process_stream(stream):
             "url": f"https://www.twitch.tv/{username}",
             "viewers": stream["viewer_count"]
         }
+        # IMMEDIATELY add to global results for real-time updates
         with streams_lock:
             qualifying_streams.append(result)
             # Sort by squads first, then by kills descending
             qualifying_streams.sort(key=lambda x: (x["squads"] if x["squads"] is not None else 999, -(x["kills"] if x["kills"] is not None else 0)))
+            print(f"✅ REAL-TIME UPDATE: Added {username} to results (total: {len(qualifying_streams)} streams)")
         return result
     return None
 

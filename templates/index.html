@@ -919,7 +919,7 @@
             debugPanel.style.display = isVisible ? 'none' : 'block';
         }
 
-        // Enhanced status polling with debug info
+        // REAL-TIME status polling with live results
         function startStatusPolling() {
             if (AppState.statusInterval) {
                 clearInterval(AppState.statusInterval);
@@ -927,6 +927,7 @@
 
             let debugLog = [];
             const startTime = Date.now();
+            let lastStreamCount = 0;
 
             AppState.statusInterval = setInterval(async () => {
                 try {
@@ -947,6 +948,19 @@
 
                     updateProgress(data);
 
+                    // REAL-TIME UPDATE: Update streams table immediately if new results
+                    if (data.streams && data.streams.length > lastStreamCount) {
+                        console.log(`🔄 REAL-TIME: New results! ${data.streams.length} streams found so far`);
+                        updateStreamsTable(data.streams);
+                        updateLastUpdated(data.last_updated);
+                        lastStreamCount = data.streams.length;
+
+                        // Show notification for first few streams
+                        if (lastStreamCount <= 5) {
+                            showNotification(`Found ${lastStreamCount} qualifying stream${lastStreamCount > 1 ? 's' : ''} so far!`, 'info');
+                        }
+                    }
+
                     if (!data.is_fetching) {
                         // Scanning complete
                         clearInterval(AppState.statusInterval);
@@ -963,7 +977,7 @@
                         debugLog.push(`[${Math.round((Date.now() - startTime) / 1000)}s] Scan complete! Found ${data.streams.length} streams.`);
                         updateDebugInfo(debugLog, data);
 
-                        showNotification(`Scan complete! Found ${data.streams.length} streams.`, 'success');
+                        showNotification(`Scan complete! Found ${data.streams.length} qualifying streams.`, 'success');
                     }
                 } catch (error) {
                     console.error('Status polling error:', error);
