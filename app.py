@@ -835,20 +835,20 @@ def fetch_and_update_streams():
     with streams_lock:
         qualifying_streams.clear()
 
-    with ThreadPoolExecutor(max_workers=6) as executor:  # Reduced from 12 to prevent resource contention
-        futures = [executor.submit(process_stream, stream) for stream in streams]
-        completed = 0
-        for future in as_completed(futures):
-            # Check if stop was requested
-            if fetch_status["stop_requested"]:
-                print("Stop signal received, halting processing...")
-                fetch_status["progress"] = f"Stopped! Processed {completed}/{len(streams)} streams."
-                break
+    # Process streams SEQUENTIALLY (one at a time) for clearer real-time results
+    completed = 0
+    for stream in streams:
+        # Check if stop was requested
+        if fetch_status["stop_requested"]:
+            print("Stop signal received, halting processing...")
+            fetch_status["progress"] = f"Stopped! Processed {completed}/{len(streams)} streams."
+            break
 
-            result = future.result()
-            completed += 1
-            fetch_status["current_stream"] = completed
-            fetch_status["progress"] = f"Processed {completed}/{len(streams)} streams..."
+        # Process this stream
+        result = process_stream(stream)
+        completed += 1
+        fetch_status["current_stream"] = completed
+        fetch_status["progress"] = f"Processed {completed}/{len(streams)} streams..."
 
     with streams_lock:
         last_updated = time.strftime("%Y-%m-%d %H:%M:%S")
