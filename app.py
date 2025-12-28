@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 
 # Set Tesseract path (adjust for your system; VS Code will use your system PATH)
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Example for Windows; comment out if on macOS/Linux
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Windows path
 
 # Twitch API credentials (use environment variables for security in VS Code)
 CLIENT_ID = os.environ.get('TWITCH_CLIENT_ID')
@@ -668,7 +668,7 @@ def extract_squads_from_text(text):
     numbers = re.findall(r'\d+', text_lower)
 
     squads = []
-    # Apex Legends specific patterns
+    # Apex Legends specific patterns - expanded for better detection
     apex_squad_patterns = [
         r'(\d+)/20',                    # "3/20" squads
         r'(\d+)\s*squads?\s*left',      # "3 squads left"
@@ -679,6 +679,11 @@ def extract_squads_from_text(text):
         r'(\d+)\s*of\s*20',             # "3 of 20"
         r'(\d+)\s*left',                # "3 left"
         r'remaining:\s*(\d+)',          # "Remaining: 3"
+        r'(\d+)\s*squads?',             # "3 squads" (simple)
+        r'(\d+)\s*teams?',              # "3 teams" (simple)
+        r'(\d+)\s*sq',                  # "3 sq" (abbreviated)
+        r'sq\s*(\d+)',                  # "sq 3" (abbreviated)
+        r'(\d+)[\s/]+(?:sq|squads?|teams?)',  # "3 sq", "3/squads"
     ]
 
     # Generic fallback patterns
@@ -687,6 +692,8 @@ def extract_squads_from_text(text):
         r'squad\s*(\d+)',  # "squad 3"
         r'(\d+)\s*remaining', # "3 remaining"
         r'remaining\s*(\d+)', # "remaining 3"
+        r'(\d+)\s*active',   # "3 active"
+        r'active\s*(\d+)',   # "active 3"
     ]
 
     # Try Apex patterns first
@@ -704,12 +711,29 @@ def extract_squads_from_text(text):
         if 1 <= num_int <= 20:
             squads.append(num_int)
 
-    # Context-based extraction for unclear cases
-    if ('squad' in text_lower or 'team' in text_lower) and ('left' in text_lower or 'remaining' in text_lower or 'alive' in text_lower):
+    # Context-based extraction for unclear cases - improved logic
+    squad_keywords = ['squad', 'team', 'sq', 'alive', 'remaining', 'left', 'active']
+    has_squad_context = any(keyword in text_lower for keyword in squad_keywords)
+
+    if has_squad_context:
+        # Look for isolated numbers that could be squad counts
         for num in numbers:
             num_int = int(num)
             if 1 <= num_int <= 20:
-                squads.append(num_int)
+                # Additional validation: check if number appears near squad keywords
+                num_str = str(num_int)
+                start_pos = text_lower.find(num_str)
+                if start_pos >= 0:
+                    # Check 10 characters before and after for context
+                    context_before = text_lower[max(0, start_pos-10):start_pos]
+                    context_after = text_lower[start_pos+len(num_str):start_pos+len(num_str)+10]
+                    full_context = context_before + ' ' + context_after
+
+                    if any(keyword in full_context for keyword in squad_keywords):
+                        squads.append(num_int)
+                    # Also accept if it's a reasonable squad number and we have squad context
+                    elif 1 <= num_int <= 10:  # Endgame numbers are more likely
+                        squads.append(num_int)
 
     return list(set(squads))  # Remove duplicates
 
@@ -785,16 +809,18 @@ def ocr_squad_count(frame, username):
             squads_h = int(squads_roi['height'] * height)
         else:
             print("🎯 Using default ROI positions")
-            # Default APEX HUD CROPS: Squads in bottom-right, Kills in top-right
-            kills_x = int(width * 0.85)
-            kills_y = int(height * 0.05)
-            kills_w = int(width * 0.15)
-            kills_h = int(height * 0.10)
+            # Improved APEX HUD CROPS: Squads in bottom-center, Kills in top-center
+            # Squads are typically in the center-bottom of the screen
+            squads_x = int(width * 0.40)  # More center-left for squads
+            squads_y = int(height * 0.88)  # Lower on screen
+            squads_w = int(width * 0.20)   # Wider area
+            squads_h = int(height * 0.08)  # Taller for text
 
-            squads_x = int(width * 0.85)
-            squads_y = int(height * 0.85)
-            squads_w = int(width * 0.15)
-            squads_h = int(height * 0.10)
+            # Kills are typically in the top-center area
+            kills_x = int(width * 0.35)   # Center area
+            kills_y = int(height * 0.02)  # Very top
+            kills_w = int(width * 0.30)   # Wide area for kill feed
+            kills_h = int(height * 0.08)  # Reasonable height
 
         # Extract ROI regions
         kills_crop = frame[kills_y:kills_y + kills_h, kills_x:kills_x + kills_w]
@@ -1010,7 +1036,7 @@ def process_stream(stream):
 
     # HEALTH CHECK: Verify stream is accessible before processing
     add_log_entry("Health check started")
-    if not check_stream_health(username, timeout_seconds=2):
+    if not check_stream_health(username, timeout_seconds=8):
         add_log_entry(f"❌ Health check failed - stream unhealthy")
         processing_details["status"] = "failed"
         print(f"⏭️ Skipping unhealthy stream: {username}")
@@ -1018,11 +1044,24 @@ def process_stream(stream):
     add_log_entry("✅ Health check passed")
 
     add_log_entry("Frame capture started")
-    frame = capture_frame(username)
+    frame = None
+    max_retries = 2
+    for attempt in range(max_retries + 1):
+        if attempt > 0:
+            add_log_entry(f"Retrying frame capture (attempt {attempt + 1}/{max_retries + 1})")
+            time.sleep(1)  # Brief pause between retries
+
+        frame = capture_frame(username, timeout_seconds=7)  # Slightly shorter timeout for retries
+        if frame is not None:
+            break
+
+        if attempt < max_retries:
+            print(f"⚠️ Frame capture attempt {attempt + 1} failed, retrying...")
+
     if frame is None:
-        add_log_entry("❌ Frame capture failed")
+        add_log_entry("❌ Frame capture failed after retries")
         processing_details["status"] = "failed"
-        print(f"❌ Failed to capture frame from {username}")
+        print(f"❌ Failed to capture frame from {username} after {max_retries + 1} attempts")
         return None
     add_log_entry("✅ Frame captured")
 
@@ -1053,16 +1092,18 @@ def process_stream(stream):
         monitor_squads_h = int(squads_roi['height'] * height)
     else:
         print("🎯 Using default ROI positions for monitoring")
-        # Default APEX HUD CROPS: Squads in bottom-right, Kills in top-right
-        monitor_kills_x = int(width * 0.85)
-        monitor_kills_y = int(height * 0.05)
-        monitor_kills_w = int(width * 0.15)
-        monitor_kills_h = int(height * 0.10)
+        # Improved APEX HUD CROPS: Squads in bottom-center, Kills in top-center
+        # Squads are typically in the center-bottom of the screen
+        monitor_squads_x = int(width * 0.40)  # More center-left for squads
+        monitor_squads_y = int(height * 0.88)  # Lower on screen
+        monitor_squads_w = int(width * 0.20)   # Wider area
+        monitor_squads_h = int(height * 0.08)  # Taller for text
 
-        monitor_squads_x = int(width * 0.85)
-        monitor_squads_y = int(height * 0.85)
-        monitor_squads_w = int(width * 0.15)
-        monitor_squads_h = int(height * 0.10)
+        # Kills are typically in the top-center area
+        monitor_kills_x = int(width * 0.35)   # Center area
+        monitor_kills_y = int(height * 0.02)  # Very top
+        monitor_kills_w = int(width * 0.30)   # Wide area for kill feed
+        monitor_kills_h = int(height * 0.08)  # Reasonable height
 
     processing_details["roi_regions"] = {
         "kills": {
