@@ -1460,19 +1460,42 @@
 
             if (!img || !rect) return;
 
+            // Calculate scaling factor between displayed image and actual image
+            const displayedWidth = img.offsetWidth;
+            const displayedHeight = img.offsetHeight;
+            const naturalWidth = img.naturalWidth;
+            const naturalHeight = img.naturalHeight;
+
+            const scaleX = naturalWidth / displayedWidth;
+            const scaleY = naturalHeight / displayedHeight;
+
+            console.log(`🔍 Image scaling: ${displayedWidth}x${displayedHeight} displayed, ${naturalWidth}x${naturalHeight} natural`);
+            console.log(`📐 Scale factors: ${scaleX.toFixed(2)} x ${scaleY.toFixed(2)}`);
+
+            // Scale rectangle coordinates to match actual image dimensions
+            const scaledRect = {
+                x: Math.round(rect.x * scaleX),
+                y: Math.round(rect.y * scaleY),
+                width: Math.round(rect.width * scaleX),
+                height: Math.round(rect.height * scaleY)
+            };
+
+            console.log(`🎯 Original rect: (${rect.x}, ${rect.y}) ${rect.width}x${rect.height}`);
+            console.log(`🔄 Scaled rect: (${scaledRect.x}, ${scaledRect.y}) ${scaledRect.width}x${scaledRect.height}`);
+
             // Create a canvas to crop the image
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
 
-            // Set canvas size to the cropped area
-            canvas.width = rect.width;
-            canvas.height = rect.height;
+            // Set canvas size to the cropped area (use scaled dimensions for better quality)
+            canvas.width = scaledRect.width;
+            canvas.height = scaledRect.height;
 
-            // Draw the cropped portion of the original image
+            // Draw the cropped portion of the original image using scaled coordinates
             ctx.drawImage(
                 img,
-                rect.x, rect.y, rect.width, rect.height,  // Source rectangle
-                0, 0, rect.width, rect.height             // Destination on canvas
+                scaledRect.x, scaledRect.y, scaledRect.width, scaledRect.height,  // Source rectangle (scaled)
+                0, 0, scaledRect.width, scaledRect.height                       // Destination on canvas
             );
 
             // Convert canvas to data URL for display
@@ -1484,9 +1507,9 @@
             // Show crop preview section
             cropPreview.style.display = 'block';
             previewImage.src = croppedDataUrl;
-            cropDimensions.textContent = `${rect.width} × ${rect.height} pixels`;
+            cropDimensions.textContent = `${scaledRect.width} × ${scaledRect.height} pixels (scaled from ${rect.width} × ${rect.height})`;
 
-            console.log(`📸 Crop preview created: ${rect.width}×${rect.height} pixels`);
+            console.log(`📸 Crop preview created: ${scaledRect.width}×${scaledRect.height} pixels (scaled)`);
         }
 
         // Close training modal
