@@ -1032,20 +1032,50 @@ def process_stream(stream):
     img_base64 = base64.b64encode(buffer).decode('utf-8')
     processing_details["screenshot"] = f"data:image/png;base64,{img_base64}"
 
-    # SET ROI REGIONS FOR MONITORING (use actual regions being processed)
+    # CALCULATE ROI REGIONS FOR MONITORING (same logic as in ocr_squad_count)
     height, width = frame.shape[:2]
+
+    # Use custom ROI positions if available, otherwise use defaults
+    if custom_roi_positions:
+        print("🎯 Using custom ROI positions for monitoring")
+        kills_roi = custom_roi_positions['kills']
+        squads_roi = custom_roi_positions['squads']
+
+        # Convert relative positions (0-1) to absolute pixel coordinates
+        monitor_kills_x = int(kills_roi['x'] * width)
+        monitor_kills_y = int(kills_roi['y'] * height)
+        monitor_kills_w = int(kills_roi['width'] * width)
+        monitor_kills_h = int(kills_roi['height'] * height)
+
+        monitor_squads_x = int(squads_roi['x'] * width)
+        monitor_squads_y = int(squads_roi['y'] * height)
+        monitor_squads_w = int(squads_roi['width'] * width)
+        monitor_squads_h = int(squads_roi['height'] * height)
+    else:
+        print("🎯 Using default ROI positions for monitoring")
+        # Default APEX HUD CROPS: Squads in bottom-right, Kills in top-right
+        monitor_kills_x = int(width * 0.85)
+        monitor_kills_y = int(height * 0.05)
+        monitor_kills_w = int(width * 0.15)
+        monitor_kills_h = int(height * 0.10)
+
+        monitor_squads_x = int(width * 0.85)
+        monitor_squads_y = int(height * 0.85)
+        monitor_squads_w = int(width * 0.15)
+        monitor_squads_h = int(height * 0.10)
+
     processing_details["roi_regions"] = {
         "kills": {
-            "x": kills_x,
-            "y": kills_y,
-            "width": kills_w,
-            "height": kills_h
+            "x": monitor_kills_x,
+            "y": monitor_kills_y,
+            "width": monitor_kills_w,
+            "height": monitor_kills_h
         },
         "squads": {
-            "x": squads_x,
-            "y": squads_y,
-            "width": squads_w,
-            "height": squads_h
+            "x": monitor_squads_x,
+            "y": monitor_squads_y,
+            "width": monitor_squads_w,
+            "height": monitor_squads_h
         }
     }
 
