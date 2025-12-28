@@ -762,6 +762,7 @@ def detect_kills_visual(image, head_template=None):
         return None
 
 def ocr_squad_count(frame, username):
+    global processing_details
     print("🎯 Running APEX-optimized OCR with multiple PSM modes...")
     try:
         height, width, _ = frame.shape
@@ -789,6 +790,8 @@ def ocr_squad_count(frame, username):
         all_squads = []
         all_kills = []
         variant_results = []
+        best_squads_text = ""
+        best_kills_text = ""
 
         def process_ocr_variant(variant_info):
             """Process OCR with different preprocessing + PSM combinations"""
@@ -852,6 +855,12 @@ def ocr_squad_count(frame, username):
                     if result:
                         variant_results.append(result)
 
+                        # Store best text results for monitoring
+                        if result['squads_text'] and len(result['squads_text']) > len(best_squads_text):
+                            best_squads_text = result['squads_text']
+                        if result['kills_text'] and len(result['kills_text']) > len(best_kills_text):
+                            best_kills_text = result['kills_text']
+
                         # Print results for debugging
                         print(f"🎯 APEX OCR prep_v{result['prep_variant']} psm_{result['psm_mode']}: '{result['combined_text'][:50]}...' (conf: {result['confidence']:.1f}%)")
 
@@ -911,6 +920,10 @@ def ocr_squad_count(frame, username):
                 if valid_kills:
                     final_kills = max(valid_kills)  # Take highest kill count
 
+        # STORE OCR TEXT RESULTS FOR MONITORING
+        processing_details["ocr_results"]["squads_text"] = best_squads_text
+        processing_details["ocr_results"]["kills_text"] = best_kills_text
+
         # Print learning stats occasionally
         if len(ocr_learner.detection_history) % 25 == 0 and len(ocr_learner.detection_history) > 0:  # More frequent stats
             stats = ocr_learner.get_detection_stats()
@@ -938,21 +951,85 @@ def ocr_squad_count(frame, username):
         gc.collect()
 
 def process_stream(stream):
+    global processing_details
     username = stream["user_login"]
     print(f"\n----- Processing stream: {username} -----\n")
 
+    # UPDATE MONITORING: Set current stream being processed
+    processing_details["current_stream"] = {
+        "username": username,
+        "viewers": stream["viewer_count"],
+        "url": f"https://www.twitch.tv/{username}"
+    }
+    processing_details["status"] = "processing"
+    processing_details["timeline"] = []
+    processing_details["processing_log"] = []
+    start_time = time.time()
+
+    def add_log_entry(message):
+        """Add entry to processing timeline and log"""
+        elapsed = time.time() - start_time
+        entry = ".1f"
+        processing_details["timeline"].append(entry)
+        processing_details["processing_log"].append(message)
+        print(message)
+
+    add_log_entry("Starting stream processing")
+
     # HEALTH CHECK: Verify stream is accessible before processing
+    add_log_entry("Health check started")
     if not check_stream_health(username, timeout_seconds=2):
+        add_log_entry(f"❌ Health check failed - stream unhealthy")
+        processing_details["status"] = "failed"
         print(f"⏭️ Skipping unhealthy stream: {username}")
         return None
+    add_log_entry("✅ Health check passed")
 
+    add_log_entry("Frame capture started")
     frame = capture_frame(username)
     if frame is None:
+        add_log_entry("❌ Frame capture failed")
+        processing_details["status"] = "failed"
         print(f"❌ Failed to capture frame from {username}")
         return None
+    add_log_entry("✅ Frame captured")
 
+    # STORE SCREENSHOT FOR MONITORING
+    import base64
+    _, buffer = cv2.imencode('.png', frame)
+    img_base64 = base64.b64encode(buffer).decode('utf-8')
+    processing_details["screenshot"] = f"data:image/png;base64,{img_base64}"
+
+    # SET ROI REGIONS FOR MONITORING
+    height, width = frame.shape[:2]
+    processing_details["roi_regions"] = {
+        "kills": {
+            "x": int(width * 0.85),
+            "y": int(height * 0.05),
+            "width": int(width * 0.15),
+            "height": int(height * 0.10)
+        },
+        "squads": {
+            "x": int(width * 0.85),
+            "y": int(height * 0.85),
+            "width": int(width * 0.15),
+            "height": int(height * 0.10)
+        }
+    }
+
+    add_log_entry("OCR processing started")
     metrics = ocr_squad_count(frame, username)
+
     if metrics is not None:
+        # UPDATE OCR RESULTS FOR MONITORING
+        processing_details["ocr_results"] = {
+            "kills_text": getattr(ocr_squad_count, 'last_kills_text', ''),
+            "squads_text": getattr(ocr_squad_count, 'last_squads_text', ''),
+            "kills_detected": metrics["kills"],
+            "squads_detected": metrics["squads"],
+            "confidence": {"kills": 85, "squads": 90}  # Placeholder confidence
+        }
+
         result = {
             "user": username,
             "squads": metrics["squads"],
@@ -960,6 +1037,10 @@ def process_stream(stream):
             "url": f"https://www.twitch.tv/{username}",
             "viewers": stream["viewer_count"]
         }
+
+        add_log_entry(f"🎯 OCR detection complete - Squads: {metrics['squads']}, Kills: {metrics['kills']}")
+        processing_details["status"] = "completed"
+
         # IMMEDIATELY add to global results for real-time updates
         with streams_lock:
             qualifying_streams.append(result)
@@ -968,6 +1049,8 @@ def process_stream(stream):
             print(f"✅ REAL-TIME UPDATE: Added {username} to results (total: {len(qualifying_streams)} streams)")
         return result
 
+    add_log_entry("❌ No qualifying content found")
+    processing_details["status"] = "no_content"
     print(f"❌ No qualifying content found in {username}")
     return None
 
@@ -1086,6 +1169,32 @@ def ocr_stats():
             "streams_analyzed": len(qualifying_streams),
             "last_updated": last_updated
         })
+
+# Global processing details for monitoring
+processing_details = {
+    "current_stream": None,
+    "status": "idle",
+    "screenshot": None,
+    "roi_regions": {
+        "kills": {"x": 0, "y": 0, "width": 0, "height": 0},
+        "squads": {"x": 0, "y": 0, "width": 0, "height": 0}
+    },
+    "ocr_results": {
+        "kills_text": "",
+        "squads_text": "",
+        "kills_detected": None,
+        "squads_detected": None,
+        "confidence": {"kills": 0, "squads": 0}
+    },
+    "timeline": [],
+    "processing_log": []
+}
+
+@app.route('/processing-details')
+def processing_details_endpoint():
+    """Return current processing details for monitoring"""
+    global processing_details
+    return jsonify(processing_details)
 
 def cleanup_temp_screenshots():
     """Clean up temporary training screenshots older than 1 hour"""

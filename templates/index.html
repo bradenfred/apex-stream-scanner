@@ -447,6 +447,61 @@
                 </div>
                 <button id="toggle-debug" class="debug-toggle" onclick="toggleDebug()" style="display: none;">Show Debug Info</button>
             </div>
+
+            <!-- OCR Processing Monitor -->
+            <div id="processing-monitor" class="progress-section" style="display: none; margin-top: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0; color: #2c3e50;">🎯 OCR Processing Monitor</h3>
+                    <button id="toggle-monitor" class="debug-toggle" onclick="toggleMonitor()">Hide Monitor</button>
+                </div>
+
+                <div id="monitor-content">
+                    <!-- Current Processing Status -->
+                    <div id="current-processing" style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                        <div id="processing-status" style="font-weight: bold; color: #6c757d;">No active processing</div>
+                    </div>
+
+                    <!-- Visual ROI Display -->
+                    <div id="roi-display" style="display: none; margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 10px 0; color: #2c3e50;">📸 Current Stream Screenshot</h4>
+                        <div style="position: relative; display: inline-block; border: 2px solid #dee2e6; border-radius: 6px;">
+                            <img id="current-screenshot" style="max-width: 100%; height: auto; display: block;" alt="Current processing screenshot">
+                            <!-- ROI Highlighting Boxes -->
+                            <div id="kills-roi" class="roi-box" style="position: absolute; border: 3px solid #dc3545; background: rgba(220, 53, 69, 0.2); pointer-events: none;"></div>
+                            <div id="squads-roi" class="roi-box" style="position: absolute; border: 3px solid #007bff; background: rgba(0, 123, 255, 0.2); pointer-events: none;"></div>
+                        </div>
+
+                        <!-- ROI Legend -->
+                        <div style="margin-top: 10px; font-size: 12px; color: #495057;">
+                            <span style="color: #dc3545;">🔴 Red box = Kills detection region</span> |
+                            <span style="color: #007bff;">🔵 Blue box = Squads detection region</span>
+                        </div>
+                    </div>
+
+                    <!-- OCR Results -->
+                    <div id="ocr-results" style="display: none; margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 10px 0; color: #2c3e50;">📊 OCR Detection Results</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div style="padding: 10px; background: rgba(220, 53, 69, 0.1); border-radius: 6px;">
+                                <strong style="color: #dc3545;">Kills Region:</strong><br>
+                                <span id="kills-text" style="font-family: monospace; font-size: 12px;">-</span><br>
+                                <span id="kills-detected" style="font-weight: bold;">Detected: -</span>
+                            </div>
+                            <div style="padding: 10px; background: rgba(0, 123, 255, 0.1); border-radius: 6px;">
+                                <strong style="color: #007bff;">Squads Region:</strong><br>
+                                <span id="squads-text" style="font-family: monospace; font-size: 12px;">-</span><br>
+                                <span id="squads-detected" style="font-weight: bold;">Detected: -</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Processing Timeline -->
+                    <div id="processing-timeline" style="display: none;">
+                        <h4 style="margin: 0 0 10px 0; color: #2c3e50;">⏱️ Processing Timeline</h4>
+                        <div id="timeline-content" style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px; background: #f8f9fa; padding: 10px; border-radius: 4px;"></div>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <section class="filters-section">
@@ -934,6 +989,205 @@
             const isVisible = debugPanel.style.display !== 'none';
             debugPanel.style.display = isVisible ? 'none' : 'block';
         }
+
+        // OCR Processing Monitor functionality
+        let monitorPollingInterval = null;
+
+        function toggleMonitor() {
+            const monitor = document.getElementById('processing-monitor');
+            const toggleBtn = document.getElementById('toggle-monitor');
+
+            if (monitor.style.display === 'none') {
+                monitor.style.display = 'block';
+                toggleBtn.textContent = 'Hide Monitor';
+                startMonitorPolling();
+            } else {
+                monitor.style.display = 'none';
+                toggleBtn.textContent = 'Show Monitor';
+                stopMonitorPolling();
+            }
+        }
+
+        function startMonitorPolling() {
+            if (monitorPollingInterval) {
+                clearInterval(monitorPollingInterval);
+            }
+
+            // Poll every 2 seconds for processing updates
+            monitorPollingInterval = setInterval(updateProcessingMonitor, 2000);
+
+            // Update immediately
+            updateProcessingMonitor();
+        }
+
+        function stopMonitorPolling() {
+            if (monitorPollingInterval) {
+                clearInterval(monitorPollingInterval);
+                monitorPollingInterval = null;
+            }
+        }
+
+        async function updateProcessingMonitor() {
+            try {
+                const response = await fetch('/processing-details');
+                const data = await response.json();
+
+                updateProcessingStatus(data);
+                updateROIDisplay(data);
+                updateOCRResults(data);
+                updateProcessingTimeline(data);
+
+            } catch (error) {
+                console.error('Failed to update processing monitor:', error);
+            }
+        }
+
+        function updateProcessingStatus(data) {
+            const statusDiv = document.getElementById('processing-status');
+            const currentStream = data.current_stream;
+
+            if (!currentStream) {
+                statusDiv.textContent = 'No active processing';
+                statusDiv.style.color = '#6c757d';
+                return;
+            }
+
+            const statusEmoji = getStatusEmoji(data.status);
+            const statusColor = getStatusColor(data.status);
+
+            statusDiv.innerHTML = `
+                <strong>${statusEmoji} ${currentStream.username}</strong>
+                (${currentStream.viewers} viewers) -
+                <span style="color: ${statusColor};">${data.status.toUpperCase()}</span>
+            `;
+        }
+
+        function getStatusEmoji(status) {
+            switch (status) {
+                case 'idle': return '⏸️';
+                case 'processing': return '🟡';
+                case 'completed': return '✅';
+                case 'failed': return '❌';
+                case 'no_content': return '⚠️';
+                default: return '🔄';
+            }
+        }
+
+        function getStatusColor(status) {
+            switch (status) {
+                case 'idle': return '#6c757d';
+                case 'processing': return '#ffc107';
+                case 'completed': return '#28a745';
+                case 'failed': return '#dc3545';
+                case 'no_content': return '#fd7e14';
+                default: return '#007bff';
+            }
+        }
+
+        function updateROIDisplay(data) {
+            const roiDisplay = document.getElementById('roi-display');
+            const screenshotImg = document.getElementById('current-screenshot');
+            const killsBox = document.getElementById('kills-roi');
+            const squadsBox = document.getElementById('squads-roi');
+
+            if (!data.screenshot) {
+                roiDisplay.style.display = 'none';
+                return;
+            }
+
+            roiDisplay.style.display = 'block';
+            screenshotImg.src = data.screenshot;
+
+            // Update ROI box positions and sizes
+            if (data.roi_regions && data.roi_regions.kills) {
+                const kills = data.roi_regions.kills;
+                killsBox.style.left = kills.x + 'px';
+                killsBox.style.top = kills.y + 'px';
+                killsBox.style.width = kills.width + 'px';
+                killsBox.style.height = kills.height + 'px';
+                killsBox.style.display = 'block';
+            } else {
+                killsBox.style.display = 'none';
+            }
+
+            if (data.roi_regions && data.roi_regions.squads) {
+                const squads = data.roi_regions.squads;
+                squadsBox.style.left = squads.x + 'px';
+                squadsBox.style.top = squads.y + 'px';
+                squadsBox.style.width = squads.width + 'px';
+                squadsBox.style.height = squads.height + 'px';
+                squadsBox.style.display = 'block';
+            } else {
+                squadsBox.style.display = 'none';
+            }
+        }
+
+        function updateOCRResults(data) {
+            const ocrResults = document.getElementById('ocr-results');
+            const killsText = document.getElementById('kills-text');
+            const squadsText = document.getElementById('squads-text');
+            const killsDetected = document.getElementById('kills-detected');
+            const squadsDetected = document.getElementById('squads-detected');
+
+            if (!data.ocr_results) {
+                ocrResults.style.display = 'none';
+                return;
+            }
+
+            ocrResults.style.display = 'block';
+
+            // Update text results
+            killsText.textContent = data.ocr_results.kills_text || '-';
+            squadsText.textContent = data.ocr_results.squads_text || '-';
+
+            // Update detected values
+            killsDetected.textContent = data.ocr_results.kills_detected ? `Detected: ${data.ocr_results.kills_detected}` : 'Detected: -';
+            squadsDetected.textContent = data.ocr_results.squads_detected ? `Detected: ${data.ocr_results.squads_detected}` : 'Detected: -';
+        }
+
+        function updateProcessingTimeline(data) {
+            const timelineDiv = document.getElementById('processing-timeline');
+            const timelineContent = document.getElementById('timeline-content');
+
+            if (!data.timeline || data.timeline.length === 0) {
+                timelineDiv.style.display = 'none';
+                return;
+            }
+
+            timelineDiv.style.display = 'block';
+
+            // Display last 10 timeline entries
+            const recentEntries = data.timeline.slice(-10);
+            timelineContent.innerHTML = recentEntries.join('<br>');
+
+            // Auto-scroll to bottom
+            timelineContent.scrollTop = timelineContent.scrollHeight;
+        }
+
+        // Add monitor toggle button to the scan controls
+        function addMonitorToggle() {
+            const controlHeader = document.querySelector('.control-header');
+            if (controlHeader && !document.getElementById('toggle-monitor-btn')) {
+                const monitorBtn = document.createElement('button');
+                monitorBtn.id = 'toggle-monitor-btn';
+                monitorBtn.className = 'scan-btn secondary';
+                monitorBtn.textContent = 'OCR Monitor';
+                monitorBtn.onclick = () => toggleMonitor();
+                monitorBtn.style.fontSize = '0.9rem';
+                monitorBtn.style.padding = '8px 16px';
+
+                // Insert after the existing buttons
+                const buttonGroup = controlHeader.querySelector('.button-group');
+                if (buttonGroup) {
+                    buttonGroup.appendChild(monitorBtn);
+                }
+            }
+        }
+
+        // Add monitor toggle when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(addMonitorToggle, 1000); // Delay to ensure DOM is ready
+        });
 
         // REAL-TIME status polling with live results
         function startStatusPolling() {
