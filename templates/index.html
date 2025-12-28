@@ -1921,8 +1921,12 @@
                     height: Math.abs(height)
                 };
 
-                // Minimum size check (10x10 pixels)
-                if (finalRect.width > 10 && finalRect.height > 10) {
+                const MIN_SIZE = 12; // Minimum pixel size for a custom ROI
+                const DEFAULT_WIDTH = 150;
+                const DEFAULT_HEIGHT = 70;
+
+                // Minimum size check with fallback placement
+                if (finalRect.width >= MIN_SIZE && finalRect.height >= MIN_SIZE) {
                     rectangles.push(finalRect);
                     canvas.rectangles = rectangles; // Expose to parent
                     
@@ -1936,9 +1940,26 @@
                     
                     console.log('Rectangle saved:', finalRect);
                 } else {
+                    // Auto-create a default ROI centered around the click point
+                    const centerX = (startX + endX) / 2;
+                    const centerY = (startY + endY) / 2;
+
+                    const defaultRect = {
+                        x: Math.max(0, Math.min(centerX - DEFAULT_WIDTH / 2, canvas.width - DEFAULT_WIDTH)),
+                        y: Math.max(0, Math.min(centerY - DEFAULT_HEIGHT / 2, canvas.height - DEFAULT_HEIGHT)),
+                        width: DEFAULT_WIDTH,
+                        height: DEFAULT_HEIGHT
+                    };
+
+                    rectangles.push(defaultRect);
+                    canvas.rectangles = rectangles;
                     redraw();
-                    statusDiv.textContent = '❌ Too small - Try again';
-                    statusDiv.style.background = 'rgba(220, 53, 69, 0.9)';
+
+                    statusDiv.textContent = `ℹ️ Small drag detected. Placed default ROI (#${rectangles.length}).`;
+                    statusDiv.style.background = 'rgba(255, 193, 7, 0.9)';
+
+                    showCropPreview(defaultRect);
+                    console.log('Auto-generated default rectangle:', defaultRect);
                 }
             }
 
