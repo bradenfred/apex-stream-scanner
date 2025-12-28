@@ -1769,196 +1769,199 @@
             });
         }
 
-        // Setup canvas drawing functionality - BULLETPROOF VERSION
+        // Setup canvas drawing functionality - REVISED BULLETPROOF VERSION
         function setupCanvasDrawing(canvas, img) {
-            console.log('🎨 Setting up BULLETPROOF canvas drawing...');
+            console.log('🎨 Setting up REVISED canvas drawing...');
 
-            // Add status indicator
-            const statusDiv = document.createElement('div');
-            statusDiv.id = 'canvas-status';
-            statusDiv.style.cssText = `
-                position: absolute;
-                bottom: 10px;
-                right: 10px;
-                background: rgba(0,123,255,0.9);
-                color: white;
-                padding: 5px 10px;
-                border-radius: 4px;
-                font-size: 11px;
-                z-index: 1000;
-                pointer-events: none;
-            `;
-            statusDiv.textContent = 'Canvas Ready - Draw rectangles!';
-            canvas.parentElement.appendChild(statusDiv);
+            // Ensure container is positioned correctly
+            const container = canvas.parentElement;
+            container.style.position = 'relative'; // Ensure relative positioning for absolute children
+
+            // Force canvas to match image dimensions exactly
+            canvas.width = img.offsetWidth;
+            canvas.height = img.offsetHeight;
+            
+            // Canvas styling to ensure it's overlaying correctly
+            canvas.style.position = 'absolute';
+            canvas.style.top = '0';
+            canvas.style.left = '0';
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+            canvas.style.zIndex = '100'; // High z-index to ensure it captures events
+            canvas.style.cursor = 'crosshair';
+            canvas.style.touchAction = 'none'; // Prevent scrolling on touch devices
+
+            // Status indicator
+            let statusDiv = document.getElementById('canvas-status');
+            if (!statusDiv) {
+                statusDiv = document.createElement('div');
+                statusDiv.id = 'canvas-status';
+                statusDiv.style.cssText = `
+                    position: absolute;
+                    bottom: 10px;
+                    right: 10px;
+                    background: rgba(0,123,255,0.9);
+                    color: white;
+                    padding: 8px 12px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    z-index: 1000;
+                    pointer-events: none;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                `;
+                container.appendChild(statusDiv);
+            }
+            statusDiv.textContent = 'Ready to Draw - Click and Drag!';
 
             const ctx = canvas.getContext('2d');
             let isDrawing = false;
             let startX, startY;
             let rectangles = [];
 
-            // Force canvas to be interactive
-            canvas.style.position = 'absolute';
-            canvas.style.top = '0';
-            canvas.style.left = '0';
-            canvas.style.zIndex = '50';
-            canvas.style.cursor = 'crosshair';
-            canvas.style.pointerEvents = 'auto';
+            // Helper to get precise coordinates relative to canvas
+            function getCoordinates(e) {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                
+                // Handle both mouse and touch events
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
-            console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
-            console.log('Canvas positioned at:', canvas.offsetTop, canvas.offsetLeft);
-
-            // Test drawing function
-            function testDraw() {
-                ctx.fillStyle = 'rgba(255,0,0,0.1)';
-                ctx.fillRect(10, 10, 50, 50);
-                ctx.strokeStyle = '#ff0000';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(10, 10, 50, 50);
-                console.log('✅ Test rectangle drawn on canvas');
+                return {
+                    x: (clientX - rect.left) * scaleX,
+                    y: (clientY - rect.top) * scaleY
+                };
             }
 
-            // Draw test rectangle to verify canvas works
-            testDraw();
-
-            // Prevent ALL image interactions
-            img.style.pointerEvents = 'none';
-            img.style.userSelect = 'none';
-
-            // Mouse event handlers - using both canvas and container
-            const container = canvas.parentElement;
-
-            function handleMouseDown(e) {
-                console.log('🖱️ Mouse down detected at:', e.clientX, e.clientY);
-
-                // Update status
-                statusDiv.textContent = 'Drawing...';
-                statusDiv.style.background = 'rgba(40, 167, 69, 0.9)';
-
-                e.preventDefault();
-                e.stopPropagation();
-
-                isDrawing = true;
-                const rect = canvas.getBoundingClientRect();
-                startX = e.clientX - rect.left;
-                startY = e.clientY - rect.top;
-
-                console.log('📍 Starting rectangle at canvas coords:', startX, startY);
-            }
-
-            function handleMouseMove(e) {
-                if (!isDrawing) return;
-
-                e.preventDefault();
-
-                const rect = canvas.getBoundingClientRect();
-                const currentX = e.clientX - rect.left;
-                const currentY = e.clientY - rect.top;
-
-                // Clear canvas completely
+            function redraw() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                // Redraw test rectangle
-                testDraw();
-
+                
                 // Draw existing rectangles
-                rectangles.forEach(r => {
+                rectangles.forEach((r, i) => {
                     ctx.strokeStyle = '#007bff';
                     ctx.lineWidth = 3;
                     ctx.strokeRect(r.x, r.y, r.width, r.height);
+                    
+                    // Add label
+                    ctx.fillStyle = '#007bff';
+                    ctx.fillRect(r.x, r.y - 20, 24, 20);
+                    ctx.fillStyle = 'white';
+                    ctx.font = '12px Arial';
+                    ctx.fillText(i + 1, r.x + 8, r.y - 5);
                 });
-
-                // Draw current rectangle
-                const width = currentX - startX;
-                const height = currentY - startY;
-                ctx.strokeStyle = '#28a745';
-                ctx.lineWidth = 3;
-                ctx.strokeRect(startX, startY, width, height);
             }
 
-            function handleMouseUp(e) {
-                if (!isDrawing) return;
-
-                console.log('✋ Mouse up detected - completing rectangle');
-
+            function startDrawing(e) {
                 e.preventDefault();
+                e.stopPropagation(); // Stop event bubbling
+                
+                isDrawing = true;
+                const coords = getCoordinates(e);
+                startX = coords.x;
+                startY = coords.y;
+                
+                statusDiv.textContent = 'Drawing... Release to Finish';
+                statusDiv.style.background = 'rgba(40, 167, 69, 0.9)';
+                console.log('Draw start:', startX, startY);
+            }
 
-                const rect = canvas.getBoundingClientRect();
-                const endX = e.clientX - rect.left;
-                const endY = e.clientY - rect.top;
+            function draw(e) {
+                if (!isDrawing) return;
+                e.preventDefault();
+                e.stopPropagation();
+
+                const coords = getCoordinates(e);
+                
+                redraw(); // Clear and redraw saved rectangles
+
+                // Draw current selection
+                const width = coords.x - startX;
+                const height = coords.y - startY;
+                
+                ctx.strokeStyle = '#28a745';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([5, 5]); // Dashed line for current drawing
+                ctx.strokeRect(startX, startY, width, height);
+                ctx.setLineDash([]); // Reset dash
+            }
+
+            function stopDrawing(e) {
+                if (!isDrawing) return;
+                e.preventDefault();
+                e.stopPropagation();
+                
+                isDrawing = false;
+                
+                // For touch events, we might need to use the last known position
+                // But for mouseup we can usually get coordinates
+                let endX, endY;
+                
+                if (e.changedTouches && e.changedTouches.length > 0) {
+                    const rect = canvas.getBoundingClientRect();
+                    const scaleX = canvas.width / rect.width;
+                    const scaleY = canvas.height / rect.height;
+                    endX = (e.changedTouches[0].clientX - rect.left) * scaleX;
+                    endY = (e.changedTouches[0].clientY - rect.top) * scaleY;
+                } else {
+                    const coords = getCoordinates(e);
+                    endX = coords.x;
+                    endY = coords.y;
+                }
 
                 const width = endX - startX;
                 const height = endY - startY;
 
-                console.log('📐 Rectangle dimensions:', width, 'x', height);
+                // Normalize rectangle (handle negative width/height)
+                const finalRect = {
+                    x: width > 0 ? startX : endX,
+                    y: height > 0 ? startY : endY,
+                    width: Math.abs(width),
+                    height: Math.abs(height)
+                };
 
-                if (Math.abs(width) > 5 && Math.abs(height) > 5) {
-                    const newRect = {
-                        x: Math.min(startX, endX),
-                        y: Math.min(startY, endY),
-                        width: Math.abs(width),
-                        height: Math.abs(height)
-                    };
-
-                    rectangles.push(newRect);
-
-                    // Update status
-                    statusDiv.textContent = `Rectangle saved! (${rectangles.length} total)`;
-                    statusDiv.style.background = 'rgba(255, 193, 7, 0.9)';
-
-                    console.log('💾 Rectangle saved:', newRect);
-                    console.log('📊 Total rectangles:', rectangles.length);
-
-                    // Show cropped preview
-                    showCropPreview(newRect);
-
-                    // Reset status after 2 seconds
-                    setTimeout(() => {
-                        statusDiv.textContent = 'Canvas Ready - Draw rectangles!';
-                        statusDiv.style.background = 'rgba(0,123,255,0.9)';
-                    }, 2000);
-
+                // Minimum size check (10x10 pixels)
+                if (finalRect.width > 10 && finalRect.height > 10) {
+                    rectangles.push(finalRect);
+                    canvas.rectangles = rectangles; // Expose to parent
+                    
+                    redraw();
+                    
+                    statusDiv.textContent = `✅ Saved Rectangle #${rectangles.length}`;
+                    statusDiv.style.background = 'rgba(23, 162, 184, 0.9)';
+                    
+                    // Show preview of what was just drawn
+                    showCropPreview(finalRect);
+                    
+                    console.log('Rectangle saved:', finalRect);
                 } else {
-                    console.log('❌ Rectangle too small, discarded');
-                    statusDiv.textContent = 'Rectangle too small - try again!';
+                    redraw();
+                    statusDiv.textContent = '❌ Too small - Try again';
                     statusDiv.style.background = 'rgba(220, 53, 69, 0.9)';
-
-                    setTimeout(() => {
-                        statusDiv.textContent = 'Canvas Ready - Draw rectangles!';
-                        statusDiv.style.background = 'rgba(0,123,255,0.9)';
-                    }, 2000);
                 }
-
-                isDrawing = false;
-
-                // Redraw all rectangles
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                testDraw();
-                rectangles.forEach(r => {
-                    ctx.strokeStyle = '#007bff';
-                    ctx.lineWidth = 3;
-                    ctx.strokeRect(r.x, r.y, r.width, r.height);
-                });
             }
 
-            // Add event listeners to both canvas and container
-            canvas.addEventListener('mousedown', handleMouseDown);
-            container.addEventListener('mousedown', handleMouseDown);
+            // Remove old listeners to prevent duplicates
+            const newCanvas = canvas.cloneNode(true);
+            canvas.parentNode.replaceChild(newCanvas, canvas);
+            
+            // Re-assign context and properties
+            const newCtx = newCanvas.getContext('2d');
+            newCanvas.rectangles = rectangles; // Restore rectangles array
+            
+            // Add listeners to new canvas
+            newCanvas.addEventListener('mousedown', startDrawing);
+            newCanvas.addEventListener('mousemove', draw);
+            newCanvas.addEventListener('mouseup', stopDrawing);
+            newCanvas.addEventListener('mouseout', stopDrawing);
+            
+            // Touch support
+            newCanvas.addEventListener('touchstart', startDrawing);
+            newCanvas.addEventListener('touchmove', draw);
+            newCanvas.addEventListener('touchend', stopDrawing);
 
-            canvas.addEventListener('mousemove', handleMouseMove);
-            container.addEventListener('mousemove', handleMouseMove);
-
-            canvas.addEventListener('mouseup', handleMouseUp);
-            container.addEventListener('mouseup', handleMouseUp);
-
-            // Prevent context menu
-            canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-            container.addEventListener('contextmenu', (e) => e.preventDefault());
-
-            // Store rectangles for later use
-            canvas.rectangles = rectangles;
-
-            console.log('🎯 BULLETPROOF canvas drawing setup complete!');
-            console.log('📝 Instructions: Click and drag to draw rectangles around HUD elements');
+            console.log('✅ Canvas event listeners attached');
         }
 
         // Save training data
