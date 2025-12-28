@@ -11,6 +11,7 @@ import threading
 import gc
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
+import json
 
 # Set Tesseract path (adjust for your system; VS Code will use your system PATH)
 # Windows path for local development
@@ -137,8 +138,139 @@ class OCRLearningSystem:
             'best_variants': self.get_best_variants(3)
         }
 
+# Interactive OCR Training System
+class InteractiveTrainingSystem:
+    def __init__(self):
+        self.training_data_file = "training_corrections.json"
+        self.corrections = {}
+        self.pattern_learnings = {}
+        self.stats = {
+            'total_corrections': 0,
+            'accuracy_improvements': 0,
+            'last_updated': time.time()
+        }
+        self.load_training_data()
+
+    def load_training_data(self):
+        """Load training corrections from file"""
+        try:
+            if os.path.exists(self.training_data_file):
+                with open(self.training_data_file, 'r') as f:
+                    data = json.load(f)
+                    self.corrections = data.get('corrections', {})
+                    self.pattern_learnings = data.get('patterns', {})
+                    self.stats = data.get('stats', self.stats)
+                print(f"✅ Loaded {len(self.corrections)} training corrections")
+        except Exception as e:
+            print(f"⚠️ Could not load training data: {e}")
+
+    def save_training_data(self):
+        """Save training corrections to file"""
+        try:
+            data = {
+                'corrections': self.corrections,
+                'patterns': self.pattern_learnings,
+                'stats': self.stats
+            }
+            with open(self.training_data_file, 'w') as f:
+                json.dump(data, f, indent=2)
+            print(f"💾 Saved {len(self.corrections)} training corrections")
+        except Exception as e:
+            print(f"❌ Could not save training data: {e}")
+
+    def apply_correction(self, detected_text, correct_squads, correct_kills, username=""):
+        """Apply a user correction and learn from it"""
+        # Normalize the detected text
+        normalized_text = detected_text.lower().strip()
+
+        # Store the correction
+        correction_key = normalized_text
+        self.corrections[correction_key] = {
+            'detected_text': detected_text,
+            'correct_squads': correct_squads,
+            'correct_kills': correct_kills,
+            'username': username,
+            'timestamp': time.time(),
+            'usage_count': 0
+        }
+
+        # Learn patterns from this correction
+        self.learn_patterns(normalized_text, correct_squads, correct_kills)
+
+        # Update stats
+        self.stats['total_corrections'] += 1
+        self.stats['last_updated'] = time.time()
+
+        # Save immediately
+        self.save_training_data()
+
+        print(f"✅ Applied correction: '{detected_text}' → Squads: {correct_squads}, Kills: {correct_kills}")
+
+    def learn_patterns(self, text, squads, kills):
+        """Learn patterns from corrections to improve future detection"""
+        # Extract number patterns and context
+        words = text.split()
+        numbers = re.findall(r'\d+', text)
+
+        # Learn number-to-squads mapping
+        if squads and numbers:
+            for num in numbers:
+                num_int = int(num)
+                if 1 <= num_int <= 20:  # Valid squad range
+                    pattern_key = f"num_{num_int}_context"
+                    if pattern_key not in self.pattern_learnings:
+                        self.pattern_learnings[pattern_key] = {'squads': [], 'kills': []}
+
+                    # Add this correction to pattern learning
+                    self.pattern_learnings[pattern_key]['squads'].append(squads)
+
+                    # Keep only recent corrections (last 10)
+                    if len(self.pattern_learnings[pattern_key]['squads']) > 10:
+                        self.pattern_learnings[pattern_key]['squads'] = self.pattern_learnings[pattern_key]['squads'][-10:]
+
+    def get_correction_for_text(self, detected_text):
+        """Get learned correction for similar text"""
+        normalized_text = detected_text.lower().strip()
+
+        # Direct match
+        if normalized_text in self.corrections:
+            correction = self.corrections[normalized_text]
+            correction['usage_count'] += 1
+            return correction
+
+        # Pattern-based match (numbers in similar context)
+        numbers = re.findall(r'\d+', normalized_text)
+        for num in numbers:
+            num_int = int(num)
+            pattern_key = f"num_{num_int}_context"
+            if pattern_key in self.pattern_learnings:
+                patterns = self.pattern_learnings[pattern_key]
+                if patterns['squads']:
+                    # Return most common correction for this number pattern
+                    most_common_squads = max(set(patterns['squads']), key=patterns['squads'].count)
+                    return {
+                        'correct_squads': most_common_squads,
+                        'correct_kills': None,
+                        'confidence': len(patterns['squads']) / 10.0,  # Confidence based on sample size
+                        'source': 'pattern_learning'
+                    }
+
+        return None
+
+    def get_training_stats(self):
+        """Get training statistics"""
+        return {
+            'total_corrections': self.stats['total_corrections'],
+            'learned_patterns': len(self.pattern_learnings),
+            'last_updated': self.stats['last_updated'],
+            'recent_corrections': list(self.corrections.keys())[-5:] if self.corrections else []
+        }
+
 # Global OCR learning system
 ocr_learner = OCRLearningSystem()
+
+# Global interactive training system
+training_system = InteractiveTrainingSystem()
 
 # Training system for manual template learning
 class TrainingSystem:
@@ -1477,6 +1609,53 @@ def stop_fetch():
     fetch_status["progress"] = "Stopping scan..."
     print("Stop signal sent to scanning process")
     return jsonify({"message": "Stop signal sent - scan will halt soon"})
+
+@app.route('/apply-correction', methods=['POST'])
+def apply_correction():
+    """Apply a manual correction to improve OCR learning"""
+    try:
+        data = request.get_json()
+        username = data.get('username', '')
+        detected_text = data.get('detected_text', '')
+        correct_squads = data.get('correct_squads')
+        correct_kills = data.get('correct_kills')
+
+        # Convert to integers or None
+        if correct_squads is not None:
+            correct_squads = int(correct_squads)
+        if correct_kills is not None:
+            correct_kills = int(correct_kills)
+
+        # Apply the correction to the training system
+        training_system.apply_correction(detected_text, correct_squads, correct_kills, username)
+
+        # Get updated stats
+        stats = training_system.get_training_stats()
+
+        print(f"✅ Manual correction applied: '{detected_text}' → Squads: {correct_squads}, Kills: {correct_kills}")
+        print(f"📊 Training stats updated - Total corrections: {stats['total_corrections']}")
+
+        return jsonify({
+            "success": True,
+            "message": "Correction applied successfully",
+            "stats": stats
+        })
+
+    except Exception as e:
+        print(f"❌ Error applying correction: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/training-stats')
+def training_stats():
+    """Get current training statistics"""
+    try:
+        stats = training_system.get_training_stats()
+        return jsonify({
+            "success": True,
+            "stats": stats
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/batch-training', methods=['POST'])
 def batch_training():
