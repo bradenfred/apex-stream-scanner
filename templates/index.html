@@ -464,17 +464,40 @@
                     <!-- Visual ROI Display -->
                     <div id="roi-display" style="display: none; margin-bottom: 15px;">
                         <h4 style="margin: 0 0 10px 0; color: #2c3e50;">📸 Current Stream Screenshot</h4>
-                        <div style="position: relative; display: inline-block; border: 2px solid #dee2e6; border-radius: 6px;">
+                        <div style="position: relative; display: inline-block; border: 2px solid #dee2e6; border-radius: 6px; max-width: 100%; overflow: hidden;">
                             <img id="current-screenshot" style="max-width: 100%; height: auto; display: block;" alt="Current processing screenshot">
-                            <!-- ROI Highlighting Boxes -->
-                            <div id="kills-roi" class="roi-box" style="position: absolute; border: 3px solid #dc3545; background: rgba(220, 53, 69, 0.2); pointer-events: none;"></div>
-                            <div id="squads-roi" class="roi-box" style="position: absolute; border: 3px solid #007bff; background: rgba(0, 123, 255, 0.2); pointer-events: none;"></div>
+                            <!-- ROI Highlighting Boxes (Interactive) -->
+                            <div id="kills-roi" class="roi-box kills-roi" style="position: absolute; border: 3px solid #dc3545; background: rgba(220, 53, 69, 0.2); cursor: move; z-index: 10;">
+                                <div class="roi-label" style="position: absolute; top: -25px; left: 0; background: #dc3545; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; white-space: nowrap;">Kills ROI</div>
+                                <!-- Resize handles -->
+                                <div class="resize-handle nw" style="position: absolute; top: -3px; left: -3px; width: 8px; height: 8px; background: #dc3545; cursor: nw-resize;"></div>
+                                <div class="resize-handle ne" style="position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #dc3545; cursor: ne-resize;"></div>
+                                <div class="resize-handle sw" style="position: absolute; bottom: -3px; left: -3px; width: 8px; height: 8px; background: #dc3545; cursor: sw-resize;"></div>
+                                <div class="resize-handle se" style="position: absolute; bottom: -3px; right: -3px; width: 8px; height: 8px; background: #dc3545; cursor: se-resize;"></div>
+                            </div>
+                            <div id="squads-roi" class="roi-box squads-roi" style="position: absolute; border: 3px solid #007bff; background: rgba(0, 123, 255, 0.2); cursor: move; z-index: 10;">
+                                <div class="roi-label" style="position: absolute; top: -25px; left: 0; background: #007bff; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; white-space: nowrap;">Squads ROI</div>
+                                <!-- Resize handles -->
+                                <div class="resize-handle nw" style="position: absolute; top: -3px; left: -3px; width: 8px; height: 8px; background: #007bff; cursor: nw-resize;"></div>
+                                <div class="resize-handle ne" style="position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #007bff; cursor: ne-resize;"></div>
+                                <div class="resize-handle sw" style="position: absolute; bottom: -3px; left: -3px; width: 8px; height: 8px; background: #007bff; cursor: sw-resize;"></div>
+                                <div class="resize-handle se" style="position: absolute; bottom: -3px; right: -3px; width: 8px; height: 8px; background: #007bff; cursor: se-resize;"></div>
+                            </div>
                         </div>
 
-                        <!-- ROI Legend -->
-                        <div style="margin-top: 10px; font-size: 12px; color: #495057;">
-                            <span style="color: #dc3545;">🔴 Red box = Kills detection region</span> |
-                            <span style="color: #007bff;">🔵 Blue box = Squads detection region</span>
+                        <!-- ROI Controls -->
+                        <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button id="save-roi-btn" class="scan-btn" style="font-size: 0.9rem; padding: 6px 12px;">💾 Save ROI Positions</button>
+                            <button id="reset-roi-btn" class="scan-btn secondary" style="font-size: 0.9rem; padding: 6px 12px;">🔄 Reset to Default</button>
+                            <div style="font-size: 12px; color: #6c757d; align-self: center;">
+                                <strong>Instructions:</strong> Drag boxes to adjust OCR regions • Drag corners to resize
+                            </div>
+                        </div>
+
+                        <!-- Current ROI Coordinates -->
+                        <div id="roi-coordinates" style="margin-top: 10px; font-size: 11px; color: #495057; font-family: monospace;">
+                            <div><strong>Kills ROI:</strong> <span id="kills-coords">-</span></div>
+                            <div><strong>Squads ROI:</strong> <span id="squads-coords">-</span></div>
                         </div>
                     </div>
 
@@ -1188,6 +1211,278 @@
         document.addEventListener('DOMContentLoaded', function() {
             setTimeout(addMonitorToggle, 1000); // Delay to ensure DOM is ready
         });
+
+        // Interactive ROI Box Functionality
+        let draggedElement = null;
+        let dragOffset = { x: 0, y: 0 };
+        let isResizing = false;
+        let resizeHandle = null;
+        let customROIs = {
+            kills: { x: 0.85, y: 0.05, width: 0.15, height: 0.10 }, // Default relative positions
+            squads: { x: 0.85, y: 0.85, width: 0.15, height: 0.10 }
+        };
+
+        function initializeROIInteractions() {
+            const killsBox = document.getElementById('kills-roi');
+            const squadsBox = document.getElementById('squads-roi');
+
+            if (killsBox) {
+                setupROIDragAndResize(killsBox, 'kills');
+            }
+            if (squadsBox) {
+                setupROIDragAndResize(squadsBox, 'squads');
+            }
+
+            // Setup control buttons
+            const saveBtn = document.getElementById('save-roi-btn');
+            const resetBtn = document.getElementById('reset-roi-btn');
+
+            if (saveBtn) {
+                saveBtn.addEventListener('click', saveCustomROIs);
+            }
+            if (resetBtn) {
+                resetBtn.addEventListener('click', resetROIsToDefault);
+            }
+
+            updateROIDisplay();
+        }
+
+        function setupROIDragAndResize(roiElement, roiType) {
+            const img = document.getElementById('current-screenshot');
+            if (!img) return;
+
+            // Mouse down on the ROI box (for dragging)
+            roiElement.addEventListener('mousedown', function(e) {
+                if (e.target.classList.contains('resize-handle')) {
+                    // Handle resize
+                    isResizing = true;
+                    resizeHandle = e.target.classList[1]; // 'nw', 'ne', 'sw', 'se'
+                    draggedElement = roiElement;
+                    e.preventDefault();
+                } else {
+                    // Handle drag
+                    draggedElement = roiElement;
+                    const rect = roiElement.getBoundingClientRect();
+                    dragOffset.x = e.clientX - rect.left;
+                    dragOffset.y = e.clientY - rect.top;
+                    e.preventDefault();
+                }
+
+                document.addEventListener('mousemove', handleROIDrag);
+                document.addEventListener('mouseup', stopROIDrag);
+            });
+        }
+
+        function handleROIDrag(e) {
+            if (!draggedElement) return;
+
+            const img = document.getElementById('current-screenshot');
+            const imgRect = img.getBoundingClientRect();
+
+            if (isResizing) {
+                // Handle resizing
+                resizeROI(draggedElement, e, resizeHandle, imgRect);
+            } else {
+                // Handle dragging
+                let newLeft = e.clientX - dragOffset.x - imgRect.left;
+                let newTop = e.clientY - dragOffset.y - imgRect.top;
+
+                // Constrain to image bounds
+                const maxLeft = imgRect.width - draggedElement.offsetWidth;
+                const maxTop = imgRect.height - draggedElement.offsetHeight;
+
+                newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+                newTop = Math.max(0, Math.min(newTop, maxTop));
+
+                draggedElement.style.left = newLeft + 'px';
+                draggedElement.style.top = newTop + 'px';
+            }
+
+            updateROIDisplay();
+        }
+
+        function resizeROI(element, e, handle, imgRect) {
+            const rect = element.getBoundingClientRect();
+            let newWidth, newHeight, newLeft = rect.left - imgRect.left, newTop = rect.top - imgRect.top;
+
+            switch (handle) {
+                case 'nw':
+                    newWidth = rect.right - e.clientX;
+                    newHeight = rect.bottom - e.clientY;
+                    newLeft = e.clientX - imgRect.left;
+                    newTop = e.clientY - imgRect.top;
+                    break;
+                case 'ne':
+                    newWidth = e.clientX - rect.left;
+                    newHeight = rect.bottom - e.clientY;
+                    newTop = e.clientY - imgRect.top;
+                    break;
+                case 'sw':
+                    newWidth = rect.right - e.clientX;
+                    newHeight = e.clientY - rect.top;
+                    newLeft = e.clientX - imgRect.left;
+                    break;
+                case 'se':
+                    newWidth = e.clientX - rect.left;
+                    newHeight = e.clientY - rect.top;
+                    break;
+            }
+
+            // Minimum size constraints
+            newWidth = Math.max(20, newWidth);
+            newHeight = Math.max(20, newHeight);
+
+            // Boundary constraints
+            newLeft = Math.max(0, Math.min(newLeft, imgRect.width - newWidth));
+            newTop = Math.max(0, Math.min(newTop, imgRect.height - newHeight));
+
+            element.style.left = newLeft + 'px';
+            element.style.top = newTop + 'px';
+            element.style.width = newWidth + 'px';
+            element.style.height = newHeight + 'px';
+        }
+
+        function stopROIDrag() {
+            draggedElement = null;
+            isResizing = false;
+            resizeHandle = null;
+            document.removeEventListener('mousemove', handleROIDrag);
+            document.removeEventListener('mouseup', stopROIDrag);
+        }
+
+        function updateROIDisplay() {
+            const killsCoords = document.getElementById('kills-coords');
+            const squadsCoords = document.getElementById('squads-coords');
+
+            if (killsCoords) {
+                const killsBox = document.getElementById('kills-roi');
+                if (killsBox) {
+                    const rect = killsBox.getBoundingClientRect();
+                    killsCoords.textContent = `${Math.round(rect.left)}, ${Math.round(rect.top)} | ${Math.round(rect.width)}×${Math.round(rect.height)}`;
+                }
+            }
+
+            if (squadsCoords) {
+                const squadsBox = document.getElementById('squads-roi');
+                if (squadsBox) {
+                    const rect = squadsBox.getBoundingClientRect();
+                    squadsCoords.textContent = `${Math.round(rect.left)}, ${Math.round(rect.top)} | ${Math.round(rect.width)}×${Math.round(rect.height)}`;
+                }
+            }
+        }
+
+        function saveCustomROIs() {
+            const img = document.getElementById('current-screenshot');
+            if (!img) return;
+
+            const imgRect = img.getBoundingClientRect();
+
+            // Save kills ROI
+            const killsBox = document.getElementById('kills-roi');
+            if (killsBox) {
+                const rect = killsBox.getBoundingClientRect();
+                customROIs.kills = {
+                    x: (rect.left - imgRect.left) / imgRect.width,
+                    y: (rect.top - imgRect.top) / imgRect.height,
+                    width: rect.width / imgRect.width,
+                    height: rect.height / imgRect.height
+                };
+            }
+
+            // Save squads ROI
+            const squadsBox = document.getElementById('squads-roi');
+            if (squadsBox) {
+                const rect = squadsBox.getBoundingClientRect();
+                customROIs.squads = {
+                    x: (rect.left - imgRect.left) / imgRect.width,
+                    y: (rect.top - imgRect.top) / imgRect.height,
+                    width: rect.width / imgRect.width,
+                    height: rect.height / imgRect.height
+                };
+            }
+
+            // Save to localStorage
+            localStorage.setItem('apexScannerCustomROIs', JSON.stringify(customROIs));
+
+            showNotification('ROI positions saved! These will be used for future OCR processing.', 'success');
+        }
+
+        function resetROIsToDefault() {
+            // Reset to default positions
+            customROIs = {
+                kills: { x: 0.85, y: 0.05, width: 0.15, height: 0.10 },
+                squads: { x: 0.85, y: 0.85, width: 0.15, height: 0.10 }
+            };
+
+            // Clear localStorage
+            localStorage.removeItem('apexScannerCustomROIs');
+
+            // Reinitialize ROI positions
+            updateROIBoxesFromCustomROIs();
+
+            showNotification('ROI positions reset to defaults.', 'info');
+        }
+
+        function loadCustomROIs() {
+            const saved = localStorage.getItem('apexScannerCustomROIs');
+            if (saved) {
+                try {
+                    customROIs = JSON.parse(saved);
+                } catch (e) {
+                    console.error('Failed to load custom ROIs:', e);
+                }
+            }
+        }
+
+        function updateROIBoxesFromCustomROIs() {
+            const img = document.getElementById('current-screenshot');
+            if (!img) return;
+
+            const imgRect = img.getBoundingClientRect();
+
+            // Update kills ROI
+            const killsBox = document.getElementById('kills-roi');
+            if (killsBox && customROIs.kills) {
+                killsBox.style.left = (customROIs.kills.x * imgRect.width) + 'px';
+                killsBox.style.top = (customROIs.kills.y * imgRect.height) + 'px';
+                killsBox.style.width = (customROIs.kills.width * imgRect.width) + 'px';
+                killsBox.style.height = (customROIs.kills.height * imgRect.height) + 'px';
+            }
+
+            // Update squads ROI
+            const squadsBox = document.getElementById('squads-roi');
+            if (squadsBox && customROIs.squads) {
+                squadsBox.style.left = (customROIs.squads.x * imgRect.width) + 'px';
+                squadsBox.style.top = (customROIs.squads.y * imgRect.height) + 'px';
+                squadsBox.style.width = (customROIs.squads.width * imgRect.width) + 'px';
+                squadsBox.style.height = (customROIs.squads.height * imgRect.height) + 'px';
+            }
+
+            updateROIDisplay();
+        }
+
+        // Load custom ROIs when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCustomROIs();
+        });
+
+        // Initialize ROI interactions when monitor is shown
+        function toggleMonitor() {
+            const monitor = document.getElementById('processing-monitor');
+            const toggleBtn = document.getElementById('toggle-monitor');
+
+            if (monitor.style.display === 'none') {
+                monitor.style.display = 'block';
+                toggleBtn.textContent = 'Hide Monitor';
+                startMonitorPolling();
+                // Initialize ROI interactions after a short delay
+                setTimeout(initializeROIInteractions, 500);
+            } else {
+                monitor.style.display = 'none';
+                toggleBtn.textContent = 'Show Monitor';
+                stopMonitorPolling();
+            }
+        }
 
         // REAL-TIME status polling with live results
         function startStatusPolling() {

@@ -762,14 +762,46 @@ def detect_kills_visual(image, head_template=None):
         return None
 
 def ocr_squad_count(frame, username):
-    global processing_details
+    global processing_details, custom_roi_positions
     print("🎯 Running APEX-optimized OCR with multiple PSM modes...")
     try:
         height, width, _ = frame.shape
 
-        # APEX HUD CROPS: Squads in bottom-right, Kills in top-right
-        squads_crop = frame[int(height * 0.85):int(height * 0.95), int(width * 0.85):width]  # Bottom-right corner
-        kills_crop = frame[int(height * 0.05):int(height * 0.15), int(width * 0.85):width]   # Top-right corner
+        # Use custom ROI positions if available, otherwise use defaults
+        if custom_roi_positions:
+            print("🎯 Using custom ROI positions")
+            kills_roi = custom_roi_positions['kills']
+            squads_roi = custom_roi_positions['squads']
+
+            # Convert relative positions (0-1) to absolute pixel coordinates
+            kills_x = int(kills_roi['x'] * width)
+            kills_y = int(kills_roi['y'] * height)
+            kills_w = int(kills_roi['width'] * width)
+            kills_h = int(kills_roi['height'] * height)
+
+            squads_x = int(squads_roi['x'] * width)
+            squads_y = int(squads_roi['y'] * height)
+            squads_w = int(squads_roi['width'] * width)
+            squads_h = int(squads_roi['height'] * height)
+        else:
+            print("🎯 Using default ROI positions")
+            # Default APEX HUD CROPS: Squads in bottom-right, Kills in top-right
+            kills_x = int(width * 0.85)
+            kills_y = int(height * 0.05)
+            kills_w = int(width * 0.15)
+            kills_h = int(height * 0.10)
+
+            squads_x = int(width * 0.85)
+            squads_y = int(height * 0.85)
+            squads_w = int(width * 0.15)
+            squads_h = int(height * 0.10)
+
+        # Extract ROI regions
+        kills_crop = frame[kills_y:kills_y + kills_h, kills_x:kills_x + kills_w]
+        squads_crop = frame[squads_y:squads_y + squads_h, squads_x:squads_x + squads_w]
+
+        print(f"📐 Kills ROI: ({kills_x}, {kills_y}) {kills_w}x{kills_h}")
+        print(f"📐 Squads ROI: ({squads_x}, {squads_y}) {squads_w}x{squads_h}")
 
         # FAST PATH: Try visual kill detection first (much faster than OCR)
         kills_from_visual = None
@@ -1000,20 +1032,20 @@ def process_stream(stream):
     img_base64 = base64.b64encode(buffer).decode('utf-8')
     processing_details["screenshot"] = f"data:image/png;base64,{img_base64}"
 
-    # SET ROI REGIONS FOR MONITORING
+    # SET ROI REGIONS FOR MONITORING (use actual regions being processed)
     height, width = frame.shape[:2]
     processing_details["roi_regions"] = {
         "kills": {
-            "x": int(width * 0.85),
-            "y": int(height * 0.05),
-            "width": int(width * 0.15),
-            "height": int(height * 0.10)
+            "x": kills_x,
+            "y": kills_y,
+            "width": kills_w,
+            "height": kills_h
         },
         "squads": {
-            "x": int(width * 0.85),
-            "y": int(height * 0.85),
-            "width": int(width * 0.15),
-            "height": int(height * 0.10)
+            "x": squads_x,
+            "y": squads_y,
+            "width": squads_w,
+            "height": squads_h
         }
     }
 
@@ -1196,6 +1228,47 @@ def processing_details_endpoint():
     """Return current processing details for monitoring"""
     global processing_details
     return jsonify(processing_details)
+
+@app.route('/save-roi-positions', methods=['POST'])
+def save_roi_positions():
+    """Save custom ROI positions for OCR processing"""
+    try:
+        data = request.get_json()
+        kills_roi = data.get('kills_roi')
+        squads_roi = data.get('squads_roi')
+
+        if not kills_roi or not squads_roi:
+            return jsonify({"error": "Missing ROI data"}), 400
+
+        # Store custom ROIs globally for use in OCR processing
+        global custom_roi_positions
+        custom_roi_positions = {
+            'kills': kills_roi,
+            'squads': squads_roi
+        }
+
+        print(f"💾 Saved custom ROI positions: Kills={kills_roi}, Squads={squads_roi}")
+        return jsonify({"success": True, "message": "ROI positions saved"})
+
+    except Exception as e:
+        print(f"❌ Error saving ROI positions: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/reset-roi-positions', methods=['POST'])
+def reset_roi_positions():
+    """Reset ROI positions to defaults"""
+    try:
+        global custom_roi_positions
+        custom_roi_positions = None
+        print("🔄 ROI positions reset to defaults")
+        return jsonify({"success": True, "message": "ROI positions reset"})
+
+    except Exception as e:
+        print(f"❌ Error resetting ROI positions: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# Global custom ROI positions
+custom_roi_positions = None
 
 def cleanup_temp_screenshots():
     """Clean up temporary training screenshots older than 1 hour"""
