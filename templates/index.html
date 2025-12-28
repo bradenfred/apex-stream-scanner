@@ -590,12 +590,15 @@
             statusInterval: null,
             autoRefreshInterval: null,
             currentFilter: 'all',
+            isRequesting: false, // Prevent simultaneous requests
 
-            // Configuration
-            POLL_INTERVAL: 1000, // 1 second
-            AUTO_REFRESH_INTERVAL: 30000, // 30 seconds (user requested)
+            // Configuration - REDUCED POLLING TO PREVENT SERVER OVERLOAD
+            POLL_INTERVAL_ACTIVE: 3000, // 3 seconds when scanning
+            POLL_INTERVAL_IDLE: 15000, // 15 seconds when idle
+            AUTO_REFRESH_INTERVAL: 300000, // 5 minutes (reduced from 30s)
             RETRY_ATTEMPTS: 3,
-            RETRY_DELAY: 2000 // 2 seconds
+            RETRY_DELAY: 2000, // 2 seconds
+            REQUEST_TIMEOUT: 10000, // 10 second timeout for requests
         };
 
         // DOM element cache for better performance
@@ -774,15 +777,34 @@
             }
         }
 
-        // Start polling for status updates
+        // Start polling for status updates - SMART POLLING
         function startStatusPolling() {
             if (AppState.statusInterval) {
                 clearInterval(AppState.statusInterval);
             }
 
+            // Use different polling rates for active vs idle states
+            const pollInterval = AppState.isScanning ? AppState.POLL_INTERVAL_ACTIVE : AppState.POLL_INTERVAL_IDLE;
+
             AppState.statusInterval = setInterval(async () => {
                 try {
-                    const response = await fetch('/status');
+                    // Prevent simultaneous requests
+                    if (AppState.isRequesting) {
+                        console.log('⚠️ Skipping poll - request already in progress');
+                        return;
+                    }
+
+                    AppState.isRequesting = true;
+
+                    const response = await fetch('/status', {
+                        timeout: AppState.REQUEST_TIMEOUT,
+                        signal: AbortSignal.timeout(AppState.REQUEST_TIMEOUT)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
                     const data = await response.json();
 
                     updateProgress(data);
@@ -801,6 +823,9 @@
 
                         showNotification(`Scan complete! Found ${data.streams.length} streams.`, 'success');
                     }
+
+                    AppState.isRequesting = false;
+
                 } catch (error) {
                     console.error('Status polling error:', error);
                     clearInterval(AppState.statusInterval);
@@ -808,8 +833,11 @@
                     AppState.isScanning = false;
                     resetScanButton();
                     showNotification('Lost connection to scanner', 'error');
+                    AppState.isRequesting = false;
                 }
-            }, AppState.POLL_INTERVAL);
+            }, pollInterval);
+
+            console.log(`🔄 Started status polling with ${pollInterval}ms interval (${AppState.isScanning ? 'ACTIVE' : 'IDLE'})`);
         }
 
         // Update progress display
@@ -1036,11 +1064,19 @@
                 clearInterval(monitorPollingInterval);
             }
 
-            // Poll every 2 seconds for processing updates
-            monitorPollingInterval = setInterval(updateProcessingMonitor, 2000);
+            // Use same smart polling as main status polling
+            const pollInterval = AppState.isScanning ? AppState.POLL_INTERVAL_ACTIVE : AppState.POLL_INTERVAL_IDLE;
+
+            monitorPollingInterval = setInterval(() => {
+                if (!AppState.isRequesting) {
+                    updateProcessingMonitor();
+                }
+            }, pollInterval);
 
             // Update immediately
             updateProcessingMonitor();
+
+            console.log(`🔄 Started monitor polling with ${pollInterval}ms interval`);
         }
 
         function stopMonitorPolling() {
