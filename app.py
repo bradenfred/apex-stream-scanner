@@ -13,7 +13,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 
 # Set Tesseract path (adjust for your system; VS Code will use your system PATH)
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Windows path
+# Windows path for local development
+if os.name == 'nt':  # Windows
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# Linux path for Railway deployment
+else:  # Linux/Unix
+    pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
 # Twitch API credentials (use environment variables for security in VS Code)
 CLIENT_ID = os.environ.get('TWITCH_CLIENT_ID')
