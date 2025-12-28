@@ -12,6 +12,7 @@ import gc
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import json
+from learning_engine import engine as learning_engine
 
 # Set Tesseract path (adjust for your system; VS Code will use your system PATH)
 # Windows path for local development
@@ -928,6 +929,19 @@ def ocr_squad_count(frame, username):
     try:
         height, width, _ = frame.shape
 
+        # LOAD REFINED ROI FROM LEARNING ENGINE IF AVAILABLE
+        if not custom_roi_positions:
+            # Check if learning engine has optimized ROIs
+            refined_kills = learning_engine.get_optimal_roi('kills')
+            refined_squads = learning_engine.get_optimal_roi('squads')
+            
+            if refined_kills and refined_squads:
+                print("🧠 Using AUTONOMOUSLY LEARNED ROI positions")
+                custom_roi_positions = {
+                    'kills': refined_kills,
+                    'squads': refined_squads
+                }
+
         # Use custom ROI positions if available, otherwise use defaults
         if custom_roi_positions:
             print("🎯 Using custom ROI positions")
@@ -1211,6 +1225,18 @@ def process_stream(stream):
     # CALCULATE ROI REGIONS FOR MONITORING (same logic as in ocr_squad_count)
     height, width = frame.shape[:2]
 
+    # LOAD REFINED ROI FROM LEARNING ENGINE IF AVAILABLE (FOR MONITORING)
+    if not custom_roi_positions:
+        # Check if learning engine has optimized ROIs
+        refined_kills = learning_engine.get_optimal_roi('kills')
+        refined_squads = learning_engine.get_optimal_roi('squads')
+        
+        if refined_kills and refined_squads:
+            custom_roi_positions = {
+                'kills': refined_kills,
+                'squads': refined_squads
+            }
+
     # Use custom ROI positions if available, otherwise use defaults
     if custom_roi_positions:
         print("🎯 Using custom ROI positions for monitoring")
@@ -1444,7 +1470,7 @@ def processing_details_endpoint():
 
 @app.route('/save-roi-positions', methods=['POST'])
 def save_roi_positions():
-    """Save custom ROI positions for OCR processing"""
+    """Save custom ROI positions and feed into Learning Engine"""
     try:
         data = request.get_json()
         kills_roi = data.get('kills_roi')
@@ -1453,15 +1479,34 @@ def save_roi_positions():
         if not kills_roi or not squads_roi:
             return jsonify({"error": "Missing ROI data"}), 400
 
-        # Store custom ROIs globally for use in OCR processing
+        # Store custom ROIs globally for immediate use
         global custom_roi_positions
         custom_roi_positions = {
             'kills': kills_roi,
             'squads': squads_roi
         }
 
-        print(f"💾 Saved custom ROI positions: Kills={kills_roi}, Squads={squads_roi}")
-        return jsonify({"success": True, "message": "ROI positions saved"})
+        # FEEDBACK LOOP: Feed this correction into the Learning Engine
+        learning_engine.record_roi_feedback('kills', kills_roi)
+        learning_engine.record_roi_feedback('squads', squads_roi)
+        
+        # Check if the engine has a better recommendation now
+        refined_kills = learning_engine.get_optimal_roi('kills')
+        refined_squads = learning_engine.get_optimal_roi('squads')
+        
+        if refined_kills and refined_squads:
+            print("🧠 Autonomous refinement available! Updating global ROIs to optimized values.")
+            custom_roi_positions = {
+                'kills': refined_kills,
+                'squads': refined_squads
+            }
+
+        print(f"💾 Saved custom ROI positions & updated learning model")
+        return jsonify({
+            "success": True, 
+            "message": "ROI positions saved and model updated",
+            "refined": bool(refined_kills)
+        })
 
     except Exception as e:
         print(f"❌ Error saving ROI positions: {e}")
