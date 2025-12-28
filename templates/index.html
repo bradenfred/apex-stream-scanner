@@ -617,8 +617,9 @@
             cacheDOMElements();
             setupEventListeners();
             loadSavedState();
-            setupAutoRefresh();
-            console.log('Apex Stream Scanner initialized');
+            // Auto-refresh disabled by user request - manual start only
+            // setupAutoRefresh();
+            console.log('Apex Stream Scanner initialized - Ready for manual scan');
         }
 
         // Cache frequently used DOM elements
@@ -1975,7 +1976,10 @@
             statusDiv.style.color = '#007bff';
 
             try {
-                // Save template rectangles
+                // Determine content type based on user selection or automatic logic
+                // For manual training, we'll ask the user to categorize each rectangle
+                // This is a simplified version - in a full implementation we'd have a UI for this
+
                 for (let i = 0; i < rectangles.length; i++) {
                     const rect = rectangles[i];
 
@@ -1991,11 +1995,28 @@
                         height: Math.round(rect.height * scaleY)
                     };
 
-                    // For now, we'll save the first rectangle as head template
-                    // In a full implementation, you'd categorize each rectangle
-                    if (i === 0) {
-                        await saveTemplate('head', data.username, data.timestamp, scaledRect);
+                    // Ask user what this rectangle represents
+                    // For batch training we might automate this, but for manual training user input is best
+                    let contentType = 'head'; // Default
+                    if (!TrainingState.isBatchTraining) {
+                        // Simple heuristic: if it's near the top right, it might be kills/squads
+                        // But let's ask the user via a simple prompt for now to enable the feature
+                        const type = prompt(`Rectangle ${i+1}: What is this?\n\n1. Kills Counter (Top Right)\n2. Squads Counter (Top Right)\n3. Head Icon (Visual)\n\nEnter 1, 2, or 3:`, "3");
+                        
+                        if (type === "1") {
+                            contentType = 'kills_roi';
+                            // Also update the global ROI for kills
+                            await updateGlobalROI('kills', scaledRect, data.dimensions.width, data.dimensions.height);
+                        } else if (type === "2") {
+                            contentType = 'squads_roi';
+                            // Also update the global ROI for squads
+                            await updateGlobalROI('squads', scaledRect, data.dimensions.width, data.dimensions.height);
+                        } else {
+                            contentType = 'head';
+                        }
                     }
+
+                    await saveTemplate(contentType, data.username, data.timestamp, scaledRect);
                 }
 
                 statusDiv.textContent = 'Training data saved successfully! The scanner will now use this for detection.';
@@ -2003,13 +2024,51 @@
 
                 setTimeout(() => {
                     closeTrainingModal();
-                    showNotification('Training complete! Scanner will now use your examples for better detection.', 'success');
+                    showNotification('Training complete! ROI positions updated and templates saved.', 'success');
+                    // Refresh ROI display on main page
+                    loadCustomROIs();
                 }, 2000);
 
             } catch (error) {
                 console.error('Failed to save training data:', error);
                 statusDiv.textContent = `Error saving training data: ${error.message}`;
                 statusDiv.style.color = '#dc3545';
+            }
+        }
+
+        // Update global ROI based on training selection
+        async function updateGlobalROI(type, rect, imgWidth, imgHeight) {
+            // Convert pixel coordinates to relative (0-1) coordinates
+            const relativeROI = {
+                x: rect.x / imgWidth,
+                y: rect.y / imgHeight,
+                width: rect.width / imgWidth,
+                height: rect.height / imgHeight
+            };
+
+            // Update local state
+            if (type === 'kills') {
+                customROIs.kills = relativeROI;
+            } else if (type === 'squads') {
+                customROIs.squads = relativeROI;
+            }
+
+            // Save to localStorage
+            localStorage.setItem('apexScannerCustomROIs', JSON.stringify(customROIs));
+            
+            // Also send to server to persist for OCR
+            try {
+                await fetch('/save-roi-positions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        kills_roi: customROIs.kills,
+                        squads_roi: customROIs.squads
+                    })
+                });
+                console.log(`✅ Updated ${type} ROI from training`);
+            } catch (e) {
+                console.error(`Failed to update ${type} ROI on server:`, e);
             }
         }
 
