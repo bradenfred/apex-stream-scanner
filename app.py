@@ -100,9 +100,17 @@ class OCRLearningSystem:
         # Create weighted order - prioritize successful variants
         ordered_variants = []
         for variant_name, success_rate, total in best_variants:
-            variant_idx = int(variant_name.split('_v')[1])
-            if variant_idx <= len(PREPROCESS_VARIANTS):
-                ordered_variants.append(PREPROCESS_VARIANTS[variant_idx - 1])
+            # Handle both old format (preprocess_v1) and new format (combined IDs)
+            if variant_name.startswith('preprocess_v'):
+                variant_idx = int(variant_name.split('_v')[1])
+                if variant_idx <= len(PREPROCESS_VARIANTS):
+                    ordered_variants.append(PREPROCESS_VARIANTS[variant_idx - 1])
+            else:
+                # For combined IDs, map back to preprocessing variants
+                combined_id = int(variant_name)
+                prep_idx = combined_id // 10  # Extract preprocessing index
+                if prep_idx <= len(PREPROCESS_VARIANTS):
+                    ordered_variants.append(PREPROCESS_VARIANTS[prep_idx - 1])
 
         # Fill remaining with original order
         for prep_func, lang in PREPROCESS_VARIANTS:
@@ -393,6 +401,18 @@ def get_apex_streams(token, limit=400):
     all_streams = []
     cursor = None
     pages = 0
+
+    # First, verify API credentials work
+    print("🔍 Verifying Twitch API credentials...")
+    test_params = {"type": "live", "first": 1}
+    test_response = requests.get(url, headers=headers, params=test_params)
+    if test_response.status_code != 200:
+        print(f"❌ API credentials invalid: {test_response.status_code} - {test_response.text}")
+        print("Please check your TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET environment variables")
+        return []
+
+    print("✅ API credentials verified")
+
     while len(all_streams) < limit and pages < 8:  # Increased to 8 pages for better coverage
         params = {
             "game_id": "511224",  # Apex Legends game ID
@@ -402,23 +422,43 @@ def get_apex_streams(token, limit=400):
         if cursor:
             params["after"] = cursor
 
-        print(f"Making API request to Twitch (page {pages + 1})...")
+        print(f"📡 Making API request to Twitch (page {pages + 1}) with params: {params}")
         response = requests.get(url, headers=headers, params=params)
 
         if response.status_code != 200:
-            print(f"Streams API error: {response.status_code} - {response.text}")
+            print(f"❌ Streams API error: {response.status_code} - {response.text}")
+            print(f"Request URL: {response.request.url}")
+            print(f"Request headers: {dict(response.request.headers)}")
+
+            # Try without game_id to see if that works
+            if "game_id" in params:
+                print("🔄 Trying without game_id filter...")
+                fallback_params = {"type": "live", "first": 10}
+                fallback_response = requests.get(url, headers=headers, params=fallback_params)
+                if fallback_response.status_code == 200:
+                    fallback_data = fallback_response.json().get("data", [])
+                    print(f"✅ API works without game_id, found {len(fallback_data)} total streams")
+                    # Filter for Apex streams manually
+                    apex_streams = [s for s in fallback_data if s.get("game_id") == "511224"]
+                    if apex_streams:
+                        print(f"🎯 Found {len(apex_streams)} Apex streams by filtering")
+                        streams = [{"user_login": stream["user_login"], "viewer_count": stream["viewer_count"]} for stream in apex_streams[:limit]]
+                        return streams[:limit]
+                else:
+                    print(f"❌ API completely broken: {fallback_response.status_code}")
             break
 
         data = response.json().get("data", [])
-        print(f"API returned {len(data)} streams in this page")
+        print(f"📊 API returned {len(data)} streams in this page")
 
         if not data:
-            print("No more streams in this page, stopping pagination")
+            print("📭 No more streams in this page, stopping pagination")
             break
 
         # Show first few streams for debugging
         for i, stream in enumerate(data[:3]):
-            print(f"  Sample stream {i+1}: {stream['user_login']} - {stream['viewer_count']} viewers - {stream['title'][:50]}...")
+            game_name = stream.get("game_name", "Unknown")
+            print(f"  🎮 Sample stream {i+1}: {stream['user_login']} - {stream['viewer_count']} viewers - {game_name} - {stream['title'][:50]}...")
 
         streams = [{"user_login": stream["user_login"], "viewer_count": stream["viewer_count"]} for stream in data]
         all_streams.extend(streams)
@@ -426,41 +466,122 @@ def get_apex_streams(token, limit=400):
         pages += 1
 
         if not cursor:
-            print("No cursor for next page, stopping pagination")
+            print("🔚 No cursor for next page, stopping pagination")
             break
 
-    print(f"\nTotal fetched: {len(all_streams)} live Apex streams across {pages} pages.")
+    print(f"\n🎯 Total fetched: {len(all_streams)} live Apex streams across {pages} pages.")
 
     if len(all_streams) == 0:
-        print("WARNING: No Apex streams found! This could mean:")
-        print("  - Game ID '511224' might be incorrect")
+        print("⚠️ WARNING: No Apex streams found! This could mean:")
+        print("  - Game ID '511224' might be incorrect or changed")
         print("  - No Apex streams are currently live")
-        print("  - API credentials are invalid")
-        print("  - Rate limiting or API issues")
+        print("  - API rate limiting")
+        print("  - Game might not be categorized properly")
 
-        # Try to verify game ID by checking a few popular games
-        print("\nTrying to verify game ID...")
-        test_params = {"type": "live", "first": 5}
-        test_response = requests.get(url, headers=headers, params=test_params)
-        if test_response.status_code == 200:
-            test_data = test_response.json().get("data", [])
-            print(f"Total live streams on Twitch: {len(test_data) if test_data else 'unknown'}")
-            if test_data:
-                print("Sample live streams:")
-                for stream in test_data[:3]:
-                    print(f"  {stream['user_name']}: {stream['game_name']} ({stream['viewer_count']} viewers)")
+        # Try to find the correct game ID
+        print("\n🔍 Attempting to find Apex Legends game ID...")
+        games_url = "https://api.twitch.tv/helix/games"
+        games_params = {"name": "Apex Legends"}
+        games_response = requests.get(games_url, headers=headers, params=games_params)
+
+        if games_response.status_code == 200:
+            games_data = games_response.json().get("data", [])
+            if games_data:
+                correct_game_id = games_data[0]["id"]
+                correct_game_name = games_data[0]["name"]
+                print(f"🎯 Found Apex Legends - ID: {correct_game_id}, Name: {correct_game_name}")
+                if correct_game_id != "511224":
+                    print(f"⚠️ Game ID mismatch! Using {correct_game_id} instead of 511224")
+                    # Try one more time with correct ID
+                    retry_params = {
+                        "game_id": correct_game_id,
+                        "type": "live",
+                        "first": 20
+                    }
+                    retry_response = requests.get(url, headers=headers, params=retry_params)
+                    if retry_response.status_code == 200:
+                        retry_data = retry_response.json().get("data", [])
+                        if retry_data:
+                            print(f"✅ Found {len(retry_data)} streams with correct game ID")
+                            streams = [{"user_login": stream["user_login"], "viewer_count": stream["viewer_count"]} for stream in retry_data]
+                            return streams[:limit]
+            else:
+                print("❌ Could not find Apex Legends in games database")
         else:
-            print("Cannot verify API - check credentials!")
+            print(f"❌ Games API error: {games_response.status_code}")
 
     # Sort by viewer_count ascending to prioritize smaller streams, then shuffle
     all_streams.sort(key=lambda x: x["viewer_count"])
     random.shuffle(all_streams)
     streams = all_streams[:limit]  # Take up to limit random, smaller first
-    print(f"Selected {len(streams)} streams for OCR processing (prioritizing smaller streams)")
+    print(f"🎲 Selected {len(streams)} streams for OCR processing (prioritizing smaller streams)")
     return streams
 
+def check_stream_health(username, timeout_seconds=2):
+    """Quick health check to see if stream is accessible and active"""
+    print(f"🏥 Health check for {username} (timeout: {timeout_seconds}s)...")
+    try:
+        import threading
+        result = [None]
+        error = [None]
+
+        def health_worker():
+            try:
+                # Quick check if stream exists and is accessible
+                streams = streamlink.streams(f"https://www.twitch.tv/{username}")
+                if not streams:
+                    error[0] = f"No streams available for {username}."
+                    return
+
+                # Try to open the stream briefly to verify it's working
+                stream_url = streams["best"].url
+                cap = cv2.VideoCapture(stream_url)
+
+                # Quick read attempt (don't actually read frame yet)
+                if not cap.isOpened():
+                    error[0] = f"Cannot open stream for {username}."
+                    cap.release()
+                    return
+
+                # Check if we can get basic properties
+                width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+                height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+
+                if width == 0 or height == 0:
+                    error[0] = f"Invalid stream dimensions for {username}."
+                    cap.release()
+                    return
+
+                cap.release()
+                result[0] = True
+                print(f"✅ Stream {username} is healthy")
+
+            except Exception as e:
+                error[0] = f"Health check failed for {username}: {str(e)}"
+
+        # Start health check in background thread
+        health_thread = threading.Thread(target=health_worker, daemon=True)
+        health_thread.start()
+
+        # Wait for completion with short timeout
+        health_thread.join(timeout=timeout_seconds)
+
+        if health_thread.is_alive():
+            print(f"⏰ Health check timeout for {username} - stream may be slow")
+            return False  # Consider slow streams unhealthy for quick scanning
+
+        if error[0]:
+            print(f"❌ Health check failed for {username}: {error[0]}")
+            return False
+
+        return result[0] is True
+
+    except Exception as e:
+        print(f"Unexpected error in health check for {username}: {str(e)}")
+        return False
+
 def capture_frame(username, timeout_seconds=5):
-    print(f"Capturing frame for {username} (timeout: {timeout_seconds}s)...")
+    print(f"📸 Capturing frame for {username} (timeout: {timeout_seconds}s)...")
     try:
         import threading
         result = [None]
@@ -483,7 +604,7 @@ def capture_frame(username, timeout_seconds=5):
                     return
 
                 result[0] = frame
-                print(f"Frame captured successfully for {username}.")
+                print(f"✅ Frame captured successfully for {username}.")
 
             except Exception as e:
                 error[0] = f"Error capturing frame for {username}: {str(e)}"
@@ -496,11 +617,11 @@ def capture_frame(username, timeout_seconds=5):
         capture_thread.join(timeout=timeout_seconds)
 
         if capture_thread.is_alive():
-            print(f"Timeout: Capture for {username} took longer than {timeout_seconds} seconds, skipping...")
+            print(f"⏰ Timeout: Capture for {username} took longer than {timeout_seconds} seconds, skipping...")
             return None
 
         if error[0]:
-            print(f"Capture failed for {username}: {error[0]}")
+            print(f"❌ Capture failed for {username}: {error[0]}")
             return None
 
         return result[0]
@@ -819,9 +940,17 @@ def ocr_squad_count(frame, username):
 def process_stream(stream):
     username = stream["user_login"]
     print(f"\n----- Processing stream: {username} -----\n")
+
+    # HEALTH CHECK: Verify stream is accessible before processing
+    if not check_stream_health(username, timeout_seconds=2):
+        print(f"⏭️ Skipping unhealthy stream: {username}")
+        return None
+
     frame = capture_frame(username)
     if frame is None:
+        print(f"❌ Failed to capture frame from {username}")
         return None
+
     metrics = ocr_squad_count(frame, username)
     if metrics is not None:
         result = {
@@ -838,6 +967,8 @@ def process_stream(stream):
             qualifying_streams.sort(key=lambda x: (x["squads"] if x["squads"] is not None else 999, -(x["kills"] if x["kills"] is not None else 0)))
             print(f"✅ REAL-TIME UPDATE: Added {username} to results (total: {len(qualifying_streams)} streams)")
         return result
+
+    print(f"❌ No qualifying content found in {username}")
     return None
 
 def fetch_and_update_streams():
@@ -853,8 +984,17 @@ def fetch_and_update_streams():
     fetch_status["total_streams"] = len(streams)
     fetch_status["progress"] = f"Processing {len(streams)} streams..."
 
-    with streams_lock:
-        qualifying_streams.clear()
+    # DON'T CLEAR RESULTS - maintain them for real-time updates
+    # Only clear if this is a fresh scan (not auto-refresh)
+    if not hasattr(fetch_and_update_streams, 'last_scan_time') or \
+       time.time() - fetch_and_update_streams.last_scan_time > 300:  # 5 minutes
+        print("🔄 Fresh scan - clearing old results")
+        with streams_lock:
+            qualifying_streams.clear()
+    else:
+        print("🔄 Auto-refresh - keeping existing results")
+
+    fetch_and_update_streams.last_scan_time = time.time()
 
     # Process streams SEQUENTIALLY (one at a time) for clearer real-time results
     completed = 0
@@ -896,9 +1036,41 @@ def status():
 @app.route('/fetch', methods=['POST'])
 def fetch():
     global fetch_status
+
+    # Check if we're already fetching
     if fetch_status["is_fetching"]:
         return jsonify({"error": "Already fetching streams"}), 400
 
+    # Validate Twitch credentials before starting
+    if not CLIENT_ID or not CLIENT_SECRET:
+        error_msg = "Twitch API credentials not configured. Please set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET environment variables."
+        print(f"❌ FETCH ERROR: {error_msg}")
+        return jsonify({"error": error_msg}), 400
+
+    # Test Twitch API connectivity
+    print("🔍 Testing Twitch API connection before starting scan...")
+    test_token = get_twitch_token()
+    if not test_token:
+        error_msg = "Failed to obtain Twitch API token. Check your credentials."
+        print(f"❌ FETCH ERROR: {error_msg}")
+        return jsonify({"error": error_msg}), 400
+
+    # Test API with a simple request
+    test_url = "https://api.twitch.tv/helix/streams"
+    test_headers = {
+        "Authorization": f"Bearer {test_token}",
+        "Client-Id": CLIENT_ID
+    }
+    test_response = requests.get(test_url, headers=test_headers, params={"type": "live", "first": 1})
+
+    if test_response.status_code != 200:
+        error_msg = f"Twitch API test failed: HTTP {test_response.status_code} - {test_response.text}"
+        print(f"❌ FETCH ERROR: {error_msg}")
+        return jsonify({"error": error_msg}), 400
+
+    print("✅ Twitch API connection verified")
+
+    # Start the fetch process
     fetch_status = {"is_fetching": True, "progress": "Starting...", "current_stream": 0, "total_streams": 0}
     thread = threading.Thread(target=fetch_and_update_streams)
     thread.start()
@@ -915,10 +1087,40 @@ def ocr_stats():
             "last_updated": last_updated
         })
 
+def cleanup_temp_screenshots():
+    """Clean up temporary training screenshots older than 1 hour"""
+    try:
+        import glob
+        current_time = time.time()
+
+        # Find all temporary screenshots
+        temp_files = glob.glob("training_screenshot_*.png")
+
+        cleaned_count = 0
+        for filepath in temp_files:
+            try:
+                # Check file age
+                file_age = current_time - os.path.getmtime(filepath)
+                if file_age > 3600:  # 1 hour
+                    os.remove(filepath)
+                    cleaned_count += 1
+                    print(f"🧹 Cleaned up old training screenshot: {filepath}")
+            except Exception as e:
+                print(f"Error cleaning up {filepath}: {e}")
+
+        if cleaned_count > 0:
+            print(f"🧹 Cleaned up {cleaned_count} temporary training screenshots")
+
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
+
 @app.route('/capture-screenshot/<username>')
 def capture_screenshot(username):
     """Capture a screenshot from a specific stream for training"""
     try:
+        # Clean up old screenshots before creating new ones
+        cleanup_temp_screenshots()
+
         frame = capture_frame(username)
         if frame is None:
             return jsonify({"error": "Failed to capture frame from stream"}), 400
@@ -955,29 +1157,55 @@ def save_template():
         y = int(data.get('y', 0))
         width = int(data.get('width', 0))
         height = int(data.get('height', 0))
+        timestamp = data.get('timestamp')
+
+        print(f"📝 Saving template - Username: {username}, Type: {template_type}, Coords: ({x},{y}) {width}x{height}, Timestamp: {timestamp}")
 
         # Load the screenshot
-        timestamp = data.get('timestamp')
         screenshot_path = f"training_screenshot_{username}_{timestamp}.png"
 
         if not os.path.exists(screenshot_path):
-            return jsonify({"error": "Screenshot not found"}), 400
+            print(f"❌ Screenshot file not found: {screenshot_path}")
+            print(f"Available files in directory: {os.listdir('.')}")
+            return jsonify({"error": f"Screenshot not found: {screenshot_path}"}), 400
 
+        print(f"✅ Found screenshot file: {screenshot_path}")
         image = cv2.imread(screenshot_path)
+
+        if image is None:
+            print(f"❌ Failed to load image from {screenshot_path}")
+            return jsonify({"error": "Failed to load screenshot image"}), 400
+
+        print(f"✅ Loaded image: {image.shape}")
+
+        # Validate crop coordinates
+        img_height, img_width = image.shape[:2]
+        if x < 0 or y < 0 or width <= 0 or height <= 0 or x + width > img_width or y + height > img_height:
+            print(f"❌ Invalid crop coordinates: ({x},{y}) {width}x{height} for image {img_width}x{img_height}")
+            return jsonify({"error": "Invalid crop coordinates"}), 400
+
+        print(f"✅ Valid crop coordinates: ({x},{y}) {width}x{height}")
 
         if template_type == 'head':
             success = training_system.save_head_template(image, x, y, width, height)
             if success:
                 # Reload templates
                 training_system.load_templates()
-                return jsonify({"success": True, "message": "Head template saved successfully"})
+                template_count = len(training_system.get_head_templates())
+                print(f"✅ Head template saved successfully. Total templates: {template_count}")
+                return jsonify({"success": True, "message": f"Head template saved successfully. Total templates: {template_count}"})
             else:
+                print("❌ Failed to save head template - training_system.save_head_template returned False")
                 return jsonify({"error": "Failed to save head template"}), 400
 
+        print(f"❌ Unknown template type: {template_type}")
         return jsonify({"error": "Unknown template type"}), 400
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"❌ Unexpected error in save_template: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
 
 @app.route('/stop-fetch', methods=['POST'])
 def stop_fetch():

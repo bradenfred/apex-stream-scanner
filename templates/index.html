@@ -576,18 +576,34 @@
             localStorage.setItem('apexScannerFilter', AppState.currentFilter);
         }
 
-        // Setup auto-refresh functionality
+        // Setup smart auto-refresh functionality
         function setupAutoRefresh() {
             if (AppState.autoRefreshInterval) {
                 clearInterval(AppState.autoRefreshInterval);
             }
 
-            AppState.autoRefreshInterval = setInterval(() => {
-                if (!AppState.isScanning) {
-                    console.log('Auto-refreshing streams...');
+            let lastRefreshTime = 0;
+
+            function smartAutoRefresh() {
+                const now = Date.now();
+                const timeSinceLastRefresh = now - lastRefreshTime;
+
+                // Only auto-refresh if:
+                // 1. Not currently scanning
+                // 2. At least 30 seconds have passed since last refresh
+                // 3. User hasn't manually triggered a scan recently
+                if (!AppState.isScanning && timeSinceLastRefresh >= AppState.AUTO_REFRESH_INTERVAL) {
+                    console.log(`🔄 Auto-refresh triggered (${Math.round(timeSinceLastRefresh/1000)}s since last refresh)`);
+                    lastRefreshTime = now;
                     startStreamFetch(true); // Silent mode for auto-refresh
                 }
-            }, AppState.AUTO_REFRESH_INTERVAL);
+            }
+
+            // Check every 10 seconds for auto-refresh opportunity
+            AppState.autoRefreshInterval = setInterval(smartAutoRefresh, 10000);
+
+            // Also check immediately when page loads
+            setTimeout(smartAutoRefresh, 1000);
         }
 
         // Handle scan button click
@@ -1306,6 +1322,9 @@
                     console.log('💾 Rectangle saved:', newRect);
                     console.log('📊 Total rectangles:', rectangles.length);
 
+                    // Show cropped preview
+                    showCropPreview(newRect);
+
                     // Reset status after 2 seconds
                     setTimeout(() => {
                         statusDiv.textContent = 'Canvas Ready - Draw rectangles!';
@@ -1431,6 +1450,45 @@
             }
         }
 
+        // Show cropped preview of selected rectangle
+        function showCropPreview(rect) {
+            const img = document.querySelector('#training-image');
+            const previewContainer = document.querySelector('#preview-container');
+            const cropPreview = document.querySelector('#crop-preview');
+            const previewImage = document.querySelector('#preview-image');
+            const cropDimensions = document.querySelector('#crop-dimensions');
+
+            if (!img || !rect) return;
+
+            // Create a canvas to crop the image
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Set canvas size to the cropped area
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+
+            // Draw the cropped portion of the original image
+            ctx.drawImage(
+                img,
+                rect.x, rect.y, rect.width, rect.height,  // Source rectangle
+                0, 0, rect.width, rect.height             // Destination on canvas
+            );
+
+            // Convert canvas to data URL for display
+            const croppedDataUrl = canvas.toDataURL('image/png');
+
+            // Update preview container
+            previewContainer.innerHTML = '<p style="color: #28a745; font-weight: bold;">✅ Rectangle captured!</p>';
+
+            // Show crop preview section
+            cropPreview.style.display = 'block';
+            previewImage.src = croppedDataUrl;
+            cropDimensions.textContent = `${rect.width} × ${rect.height} pixels`;
+
+            console.log(`📸 Crop preview created: ${rect.width}×${rect.height} pixels`);
+        }
+
         // Close training modal
         function closeTrainingModal() {
             const modal = document.getElementById('training-modal');
@@ -1543,12 +1601,33 @@
                     </div>
 
                     <div id="training-content" style="display: none;">
-                        <div id="drawing-container" style="position: relative; margin: 20px 0; border: 2px solid #dee2e6; border-radius: 8px; display: inline-block; background: #f8f9fa;">
-                            <div id="drawing-instructions" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 1000; pointer-events: none;">
-                                Click and drag to draw rectangles around HUD elements
+                        <div style="display: flex; gap: 20px; align-items: flex-start;">
+                            <!-- Main drawing area -->
+                            <div style="flex: 1;">
+                                <div id="drawing-container" style="position: relative; margin: 20px 0; border: 2px solid #dee2e6; border-radius: 8px; display: inline-block; background: #f8f9fa;">
+                                    <div id="drawing-instructions" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 1000; pointer-events: none;">
+                                        Click and drag to draw rectangles around HUD elements
+                                    </div>
+                                    <img id="training-image" alt="Stream screenshot for training" style="max-width: 100%; height: auto; display: block; user-select: none; -webkit-user-drag: none;" crossorigin="anonymous">
+                                    <canvas id="training-canvas" style="position: absolute; top: 0; left: 0; pointer-events: auto; cursor: crosshair; z-index: 50;"></canvas>
+                                </div>
                             </div>
-                            <img id="training-image" alt="Stream screenshot for training" style="max-width: 100%; height: auto; display: block; user-select: none; -webkit-user-drag: none;" crossorigin="anonymous">
-                            <canvas id="training-canvas" style="position: absolute; top: 0; left: 0; pointer-events: auto; cursor: crosshair; z-index: 50;"></canvas>
+
+                            <!-- Preview area -->
+                            <div style="flex: 0 0 300px;">
+                                <h4 style="margin-top: 20px; color: #2c3e50;">Rectangle Preview</h4>
+                                <div id="preview-container" style="border: 2px solid #28a745; border-radius: 8px; padding: 10px; background: #f8f9fa; min-height: 200px; display: flex; align-items: center; justify-content: center;">
+                                    <p style="color: #6c757d; text-align: center; margin: 0;">
+                                        Draw a rectangle on the image to see a preview of the cropped area here.
+                                    </p>
+                                </div>
+                                <div id="crop-preview" style="margin-top: 10px; display: none;">
+                                    <p style="font-size: 12px; color: #495057; margin: 5px 0;">
+                                        <strong>Crop dimensions:</strong> <span id="crop-dimensions">-</span>
+                                    </p>
+                                    <img id="preview-image" style="max-width: 100%; border: 1px solid #dee2e6; border-radius: 4px;" alt="Cropped preview">
+                                </div>
+                            </div>
                         </div>
 
                         <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
