@@ -6,7 +6,7 @@ import requests
 import cv2
 import pytesseract
 import streamlink
-from flask import Flask, render_template, redirect, url_for, jsonify, request
+from flask import Flask, render_template, redirect, url_for, jsonify, request, make_response
 import threading
 import gc
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1342,7 +1342,12 @@ def fetch_and_update_streams():
 
 @app.route('/')
 def home():
-    return render_template('index.html', streams=qualifying_streams, last_updated=last_updated)
+    response = make_response(render_template('index.html', streams=qualifying_streams, last_updated=last_updated, version=int(time.time())))
+    # Force browsers to reload the page and not use cached version
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 @app.route('/status')
 def status():
