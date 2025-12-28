@@ -1153,8 +1153,9 @@ def fetch():
 
     print("✅ Twitch API connection verified")
 
-    # Start the fetch process
-    fetch_status = {"is_fetching": True, "progress": "Starting...", "current_stream": 0, "total_streams": 0}
+    # Start the fetch process - preserve stop_requested flag
+    stop_requested = fetch_status.get("stop_requested", False)
+    fetch_status = {"is_fetching": True, "progress": "Starting...", "current_stream": 0, "total_streams": 0, "stop_requested": stop_requested}
     thread = threading.Thread(target=fetch_and_update_streams)
     thread.start()
     return jsonify({"message": "Stream fetching started"})
