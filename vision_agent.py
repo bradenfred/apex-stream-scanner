@@ -98,6 +98,8 @@ def analyze_hud(image_data: bytes, username: str = "unknown") -> dict:
         "squads": None,
         "players": None,
         "kills": None,
+        "assists": None,
+        "damage": None,
         "raw_response": "",
         "success": False
     }
@@ -120,17 +122,25 @@ def analyze_hud(image_data: bytes, username: str = "unknown") -> dict:
         }
         
         # Prompt optimized for Apex Legends HUD extraction
-        prompt = """Analyze this Apex Legends game screenshot and extract the following information from the HUD:
+        prompt = """Analyze this Apex Legends game screenshot and extract the following information from the HUD.
 
-1. SQUADS LEFT: Look for text like "X SQUADS LEFT" (usually shows remaining squads in the match)
-2. PLAYERS REMAINING: Look for a player icon with a number (shows total players alive)
-3. KILLS: Look for kill count (usually near health bar or top of screen)
+The Apex HUD typically shows in the top area:
+- "X SQUADS LEFT" text with a player count number next to it
+- Below that: Kills (skull icon), Assists, Participation icons with numbers
+- Damage number (usually to the right)
+
+Extract these values:
+1. SQUADS: The number before "SQUADS LEFT" (e.g., "9 SQUADS LEFT" = 9)
+2. PLAYERS: The number next to the player silhouette icon (shows total players alive)
+3. KILLS: The number next to the skull icon (usually 0-30+)
+4. ASSISTS: The number of assists (optional)
+5. DAMAGE: The damage number (usually 0-3000+)
 
 Return ONLY a JSON object in this exact format, nothing else:
-{"squads": NUMBER_OR_NULL, "players": NUMBER_OR_NULL, "kills": NUMBER_OR_NULL}
+{"squads": NUMBER_OR_NULL, "players": NUMBER_OR_NULL, "kills": NUMBER_OR_NULL, "assists": NUMBER_OR_NULL, "damage": NUMBER_OR_NULL}
 
 If you cannot find a value, use null. Only use integers for found values.
-If this is not gameplay (loading screen, menu, etc.), return all nulls."""
+If this is not gameplay (loading screen, menu, lobby, etc.), return all nulls."""
 
         # Call Gemini API
         response = model.generate_content([prompt, image_part])
@@ -157,13 +167,19 @@ If this is not gameplay (loading screen, menu, etc.), return all nulls."""
             if "kills" in parsed and parsed["kills"] is not None:
                 result["kills"] = int(parsed["kills"])
             
+            if "assists" in parsed and parsed["assists"] is not None:
+                result["assists"] = int(parsed["assists"])
+            
+            if "damage" in parsed and parsed["damage"] is not None:
+                result["damage"] = int(parsed["damage"])
+            
             result["success"] = any([
                 result["squads"] is not None,
                 result["players"] is not None,
                 result["kills"] is not None
             ])
         
-        logger.info(f"[{username}] Extracted: squads={result['squads']}, players={result['players']}, kills={result['kills']}")
+        logger.info(f"[{username}] Extracted: squads={result['squads']}, players={result['players']}, kills={result['kills']}, assists={result['assists']}, damage={result['damage']}")
         
     except json.JSONDecodeError as e:
         logger.error(f"[{username}] Failed to parse Gemini JSON response: {e}")

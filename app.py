@@ -258,14 +258,17 @@ def process_stream(stream):
         squads = result.get("squads")
         players = result.get("players")
         kills = result.get("kills")
+        assists = result.get("assists")
+        damage = result.get("damage")
         
-        log(f"✅ AI detected: Squads={squads}, Players={players}, Kills={kills}")
+        log(f"✅ AI detected: Squads={squads}, Players={players}, Kills={kills}, Assists={assists}, Damage={damage}")
         
-        # Check if this is a qualifying stream (endgame or high kills)
+        # Check if this is a qualifying stream (endgame or high kills/damage)
         is_endgame = squads is not None and squads <= 10
         has_high_kills = kills is not None and kills >= 5
+        has_high_damage = damage is not None and damage >= 500
         
-        if is_endgame or has_high_kills:
+        if is_endgame or has_high_kills or has_high_damage:
             processing_details["status"] = "completed"
             
             stream_data = {
@@ -273,6 +276,8 @@ def process_stream(stream):
                 "squads": squads,
                 "players": players,
                 "kills": kills,
+                "assists": assists,
+                "damage": damage,
                 "url": f"https://www.twitch.tv/{username}",
                 "viewers": stream["viewer_count"]
             }

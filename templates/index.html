@@ -543,11 +543,13 @@
                     <thead>
                         <tr>
                             <th scope="col">Streamer</th>
-                            <th scope="col">Squads Left</th>
+                            <th scope="col">Squads</th>
                             <th scope="col">Players</th>
                             <th scope="col">Kills</th>
+                            <th scope="col">Assists</th>
+                            <th scope="col">Damage</th>
                             <th scope="col">Viewers</th>
-                            <th scope="col">Watch Stream</th>
+                            <th scope="col">Watch</th>
                         </tr>
                     </thead>
                     <tbody id="streams-tbody">
@@ -561,11 +563,13 @@
                             <td class="{% if stream.kills and stream.kills >= 10 %}kills-high{% else %}{% endif %}">
                                 {{ stream.kills if stream.kills else '-' }}
                             </td>
+                            <td>{{ stream.assists if stream.assists else '-' }}</td>
+                            <td class="{% if stream.damage and stream.damage >= 1000 %}kills-high{% else %}{% endif %}">
+                                {{ stream.damage if stream.damage else '-' }}
+                            </td>
                             <td>{{ stream.viewers }}</td>
                             <td>
-                                <a href="{{ stream.url }}" class="watch-link" target="_blank" rel="noopener noreferrer" aria-label="Watch {{ stream.user }}'s stream">
-                                    Watch Stream
-                                </a>
+                                <a href="{{ stream.url }}" class="watch-link" target="_blank" rel="noopener noreferrer">Watch</a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -881,12 +885,15 @@
 
             const squadsClass = getSquadsClass(stream.squads);
             const killsClass = (stream.kills && stream.kills >= 10) ? 'kills-high' : '';
+            const damageClass = (stream.damage && stream.damage >= 1000) ? 'kills-high' : '';
 
             row.innerHTML = `
                 <td>${escapeHtml(stream.user)}</td>
                 <td class="${squadsClass}">${stream.squads || '-'}</td>
                 <td>${stream.players || '-'}</td>
                 <td class="${killsClass}">${stream.kills || '-'}</td>
+                <td>${stream.assists || '-'}</td>
+                <td class="${damageClass}">${stream.damage || '-'}</td>
                 <td>${stream.viewers || 0}</td>
                 <td>
                     <a href="${escapeHtml(stream.url)}" class="watch-link" target="_blank" rel="noopener noreferrer">
