@@ -1,15 +1,11 @@
 FROM python:3.9-slim
 
-# Install system dependencies including Tesseract
+# Install minimal system dependencies (no Tesseract needed - using AI vision)
 RUN apt-get update && apt-get install -y \
-    tesseract-ocr \
-    tesseract-ocr-eng \
     libglib2.0-0 \
     libgomp1 \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
-
-# Set Tesseract path
-ENV TESSERACT_CMD=/usr/bin/tesseract
 
 # Set working directory
 WORKDIR /app

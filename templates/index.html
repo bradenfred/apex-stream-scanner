@@ -544,7 +544,8 @@
                         <tr>
                             <th scope="col">Streamer</th>
                             <th scope="col">Squads Left</th>
-                            <th scope="col">Kill Count</th>
+                            <th scope="col">Players</th>
+                            <th scope="col">Kills</th>
                             <th scope="col">Viewers</th>
                             <th scope="col">Watch Stream</th>
                         </tr>
@@ -556,7 +557,8 @@
                             <td class="{% if stream.squads and stream.squads <= 3 %}squads-low{% elif stream.squads and stream.squads <= 7 %}squads-medium{% else %}squads-high{% endif %}">
                                 {{ stream.squads if stream.squads else '-' }}
                             </td>
-                            <td class="{% if stream.kills and stream.kills >= 30 %}kills-high{% else %}{% endif %}">
+                            <td>{{ stream.players if stream.players else '-' }}</td>
+                            <td class="{% if stream.kills and stream.kills >= 10 %}kills-high{% else %}{% endif %}">
                                 {{ stream.kills if stream.kills else '-' }}
                             </td>
                             <td>{{ stream.viewers }}</td>
@@ -878,16 +880,17 @@
             const row = document.createElement('tr');
 
             const squadsClass = getSquadsClass(stream.squads);
-            const killsClass = (stream.kills && stream.kills > 6) ? 'kills-high' : '';
+            const killsClass = (stream.kills && stream.kills >= 10) ? 'kills-high' : '';
 
             row.innerHTML = `
                 <td>${escapeHtml(stream.user)}</td>
                 <td class="${squadsClass}">${stream.squads || '-'}</td>
+                <td>${stream.players || '-'}</td>
                 <td class="${killsClass}">${stream.kills || '-'}</td>
                 <td>${stream.viewers || 0}</td>
                 <td>
-                    <a href="${escapeHtml(stream.url)}" class="watch-link" target="_blank" rel="noopener noreferrer" aria-label="Watch ${escapeHtml(stream.user)}'s stream">
-                        Watch Stream
+                    <a href="${escapeHtml(stream.url)}" class="watch-link" target="_blank" rel="noopener noreferrer">
+                        Watch
                     </a>
                 </td>
             `;
