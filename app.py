@@ -14,6 +14,7 @@ import streamlink
 from flask import Flask, render_template, redirect, url_for, jsonify, request, make_response
 import threading
 import gc
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import json
 import base64
@@ -39,7 +40,8 @@ print("💾 Memory optimizations enabled")
 MAX_STREAMS_TO_PROCESS = 250  # Process 250 random streams
 SQUADS_THRESHOLD = 7  # Endgame = 7 or fewer squads
 IMAGE_QUALITY = 65  # Reduced from 85
-DELAY_BETWEEN_STREAMS = 0.3  # Seconds between each stream
+PARALLEL_WORKERS = 5  # Process 5 streams at once
+CAPTURE_TIMEOUT = 5  # Seconds (reduced from 8)
 MAX_IMAGE_WIDTH = 640  # Downscale images for AI analysis
 
 # Global state
@@ -181,7 +183,7 @@ def downscale_image(frame, max_width=MAX_IMAGE_WIDTH):
     return cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
 
 
-def capture_frame(username, timeout_seconds=8):
+def capture_frame(username, timeout_seconds=CAPTURE_TIMEOUT):
     """Capture a single frame from a Twitch stream - MEMORY OPTIMIZED"""
     print(f"📸 Capturing frame from {username}...")
     
@@ -369,10 +371,11 @@ def process_stream(stream):
 
 
 def fetch_and_update_streams():
-    """Main function to fetch and process streams"""
+    """Main function to fetch and process streams - PARALLEL PROCESSING"""
     global qualifying_streams, last_updated, fetch_status
     
-    print("\n===== Starting Stream Scan =====\n")
+    print("\n===== Starting Stream Scan (Parallel Mode) =====\n")
+    print(f"🚀 Using {PARALLEL_WORKERS} parallel workers for ~{PARALLEL_WORKERS}x speed")
     
     fetch_status["progress"] = "Getting Twitch token..."
     token = get_twitch_token()
@@ -389,7 +392,7 @@ def fetch_and_update_streams():
     streams_to_process = all_streams[:MAX_STREAMS_TO_PROCESS]
     
     fetch_status["total_streams"] = len(streams_to_process)
-    fetch_status["progress"] = f"Processing {len(streams_to_process)} of {len(all_streams)} total streams..."
+    fetch_status["progress"] = f"Processing {len(streams_to_process)} streams with {PARALLEL_WORKERS} workers..."
     
     print(f"📊 Will process {len(streams_to_process)} random streams from {len(all_streams)} total")
     
@@ -399,22 +402,38 @@ def fetch_and_update_streams():
     
     cleanup_memory()
     
-    completed = 0
-    for stream in streams_to_process:
+    completed = [0]  # Use list for mutable counter in closure
+    
+    def process_with_counter(stream):
+        """Process stream and update counter"""
         if fetch_status["stop_requested"]:
-            print("🛑 Stop requested")
-            break
+            return None
         
-        process_stream(stream)
-        completed += 1
-        fetch_status["current_stream"] = completed
-        fetch_status["progress"] = f"Processed {completed}/{len(streams_to_process)} streams..."
+        result = process_stream(stream)
         
-        # Memory cleanup between streams
-        cleanup_memory()
+        completed[0] += 1
+        fetch_status["current_stream"] = completed[0]
+        fetch_status["progress"] = f"Processed {completed[0]}/{len(streams_to_process)} streams... ({len(qualifying_streams)} found)"
         
-        # Small delay to prevent overload
-        time.sleep(DELAY_BETWEEN_STREAMS)
+        return result
+    
+    # Use ThreadPoolExecutor for parallel processing
+    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
+        futures = []
+        
+        for stream in streams_to_process:
+            if fetch_status["stop_requested"]:
+                break
+            futures.append(executor.submit(process_with_counter, stream))
+        
+        # Wait for all futures to complete
+        for future in as_completed(futures):
+            if fetch_status["stop_requested"]:
+                break
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Worker error: {e}")
     
     with streams_lock:
         last_updated = time.strftime("%Y-%m-%d %H:%M:%S")
