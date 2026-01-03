@@ -3,42 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Real-time Apex Legends stream scanner for endgame and high-kill matches">
-    <title>Apex Stream Scanner - Find Endgame & High-Kill Matches</title>
+    <title>Apex Stream Scanner</title>
     <style>
-        /* Base styles and typography */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            line-height: 1.6;
-            color: #333;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            margin: 0;
             padding: 20px;
         }
-
-        /* Header styles */
-        header {
-            text-align: center;
-            margin-bottom: 30px;
-            color: white;
-        }
-
-        header h1 {
-            margin: 0 0 10px 0;
-            font-size: 2.5rem;
-            font-weight: 700;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        }
-
-        header p {
-            margin: 0;
-            font-size: 1.1rem;
-            opacity: 0.9;
-        }
-
-        /* Main content area */
-        main {
+        .container {
             max-width: 1200px;
             margin: 0 auto;
             background: white;
@@ -46,2489 +20,484 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             overflow: hidden;
         }
-
-        /* Section styling */
-        section {
-            padding: 30px;
-        }
-
-        section h2 {
-            margin: 0 0 20px 0;
-            color: #2c3e50;
-            font-size: 1.5rem;
-            font-weight: 600;
-        }
-
-        /* Controls section */
-        .control-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-
-        .scan-btn {
+        header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        header h1 { font-size: 1.8rem; margin-bottom: 5px; }
+        header p { opacity: 0.9; font-size: 0.95rem; }
+        
+        .controls {
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .btn {
             padding: 12px 24px;
             border: none;
             border-radius: 8px;
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all 0.2s;
+        }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .btn-success { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; }
+        .btn-danger { background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; }
+        .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        
+        .status-bar {
             display: flex;
+            gap: 15px;
             align-items: center;
-            gap: 8px;
-        }
-
-        .scan-btn:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        .scan-btn:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
-        }
-
-        .scan-btn.secondary {
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-        }
-
-        .status-info {
+            margin-left: auto;
             font-size: 0.9rem;
             color: #666;
         }
-
-        /* Progress section */
-        .progress-section {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 20px;
-            margin-top: 20px;
+        .connection-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
         }
-
+        .connected { background: #28a745; }
+        .disconnected { background: #dc3545; }
+        
+        .progress-section {
+            padding: 15px 20px;
+            background: #e9ecef;
+            display: none;
+        }
         .progress-bar {
-            width: 100%;
-            background-color: #e9ecef;
-            border-radius: 10px;
-            height: 24px;
+            height: 8px;
+            background: #dee2e6;
+            border-radius: 4px;
             overflow: hidden;
             margin: 10px 0;
-            box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
         }
-
         .progress-fill {
             height: 100%;
-            background: linear-gradient(90deg, #28a745 0%, #20c997 100%);
-            border-radius: 10px;
+            background: linear-gradient(90deg, #28a745, #20c997);
             width: 0%;
-            transition: width 0.3s ease;
-            position: relative;
+            transition: width 0.3s;
         }
-
-        .progress-fill::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%);
-            animation: shimmer 2s infinite;
+        
+        .results {
+            padding: 20px;
         }
-
-        @keyframes shimmer {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
+        .results h2 {
+            margin-bottom: 15px;
+            color: #2c3e50;
         }
-
-        .progress-status {
-            margin: 0;
-            font-weight: 500;
-            color: #495057;
-        }
-
-        /* Filters section */
-        .filter-buttons {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .filter-btn {
-            background: #6c757d;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 6px;
-            font-size: 0.9rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .filter-btn:hover {
-            background: #5a6268;
-            transform: translateY(-1px);
-        }
-
-        .filter-btn.active {
-            background: #007bff;
-            box-shadow: 0 2px 8px rgba(0,123,255,0.3);
-        }
-
-        /* Results table */
-        .table-container {
-            overflow-x: auto;
-        }
-
-        .streams-table {
+        
+        table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            border-radius: 8px;
-            overflow: hidden;
         }
-
-        .streams-table thead {
+        thead {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
-
-        .streams-table th {
-            padding: 15px 12px;
-            text-align: left;
-            font-weight: 600;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .streams-table td {
+        th, td {
             padding: 12px;
+            text-align: left;
+        }
+        tbody tr {
             border-bottom: 1px solid #e9ecef;
+            transition: background 0.2s;
         }
-
-        .streams-table tbody tr {
-            transition: background-color 0.2s ease;
-        }
-
-        .streams-table tbody tr:hover {
-            background-color: #f8f9fa;
-        }
-
-        .streams-table tbody tr:last-child td {
-            border-bottom: none;
-        }
-
-        /* Status classes */
-        .squads-low {
-            color: #dc3545;
-            font-weight: 700;
-            background: rgba(220, 53, 69, 0.1);
-            padding: 2px 6px;
-            border-radius: 3px;
-        }
-
-        .squads-medium {
-            color: #fd7e14;
-            font-weight: 600;
-            background: rgba(253, 126, 20, 0.1);
-            padding: 2px 6px;
-            border-radius: 3px;
-        }
-
-        .squads-high {
-            color: #28a745;
-            font-weight: 500;
-        }
-
-        .kills-high {
-            color: #e74c3c;
-            font-weight: 700;
-            background: rgba(231, 76, 60, 0.1);
-            padding: 2px 6px;
-            border-radius: 3px;
-        }
-
-        /* Links */
+        tbody tr:hover { background: #f8f9fa; }
+        
+        .squads-low { color: #dc3545; font-weight: 700; background: rgba(220,53,69,0.1); padding: 2px 6px; border-radius: 3px; }
+        .squads-med { color: #fd7e14; font-weight: 600; }
+        .kills-high { color: #dc3545; font-weight: 700; background: rgba(220,53,69,0.1); padding: 2px 6px; border-radius: 3px; }
+        
         .watch-link {
             color: #007bff;
             text-decoration: none;
             font-weight: 500;
-            transition: color 0.2s ease;
         }
-
-        .watch-link:hover {
-            color: #0056b3;
-            text-decoration: underline;
-        }
-
-        /* No results message */
+        .watch-link:hover { text-decoration: underline; }
+        
         .no-results {
             text-align: center;
-            padding: 40px 20px;
+            padding: 40px;
             color: #6c757d;
         }
-
-        .no-results p {
-            margin: 0;
-            font-size: 1.1rem;
+        
+        .last-checked {
+            font-size: 0.85rem;
+            color: #6c757d;
         }
-
-        /* Loading animation */
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* Footer */
+        
         footer {
             text-align: center;
-            padding: 20px;
-            background: #f8f9fa;
-            color: #6c757d;
-            font-size: 0.9rem;
-            margin-top: 30px;
-        }
-
-        /* Responsive design */
-        @media (max-width: 768px) {
-            body {
-                padding: 10px;
-            }
-
-            main {
-                border-radius: 8px;
-            }
-
-            section {
-                padding: 20px;
-            }
-
-            .control-header {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .scan-btn {
-                width: 100%;
-                justify-content: center;
-            }
-
-            .streams-table {
-                font-size: 14px;
-            }
-
-            .streams-table th,
-            .streams-table td {
-                padding: 8px 6px;
-            }
-
-            .filter-buttons {
-                justify-content: center;
-            }
-
-            .filter-btn {
-                flex: 1;
-                min-width: 120px;
-            }
-        }
-
-        /* Debug panel */
-        .debug-panel {
-            margin-top: 15px;
             padding: 15px;
             background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 6px;
-        }
-
-        .debug-panel h3 {
-            margin: 0 0 10px 0;
-            color: #495057;
-            font-size: 1rem;
-        }
-
-        .debug-content {
-            font-family: 'Courier New', monospace;
+            color: #6c757d;
             font-size: 0.85rem;
-            background: #ffffff;
-            padding: 10px;
-            border: 1px solid #e9ecef;
-            border-radius: 4px;
-            max-height: 200px;
-            overflow-y: auto;
-            white-space: pre-wrap;
         }
-
-        .debug-toggle {
-            margin-top: 10px;
-            padding: 6px 12px;
-            background: #6c757d;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            cursor: pointer;
-        }
-
-        .debug-toggle:hover {
-            background: #5a6268;
-        }
-
-        @media (max-width: 480px) {
-            header h1 {
-                font-size: 2rem;
-            }
-
-            .filter-btn {
-                padding: 8px 12px;
-                font-size: 0.8rem;
-            }
+        
+        @media (max-width: 768px) {
+            .btn-row { flex-direction: column; }
+            .status-bar { margin-left: 0; margin-top: 10px; }
+            th, td { padding: 8px 6px; font-size: 0.9rem; }
         }
     </style>
 </head>
 <body>
-    <header>
-        <h1>Apex Legends Stream Scanner</h1>
-        <p>Find streams with low squads remaining or high kill counts</p>
-    </header>
+    <div class="container">
+        <header>
+            <h1>🎮 Apex Stream Scanner</h1>
+            <p>Find endgame streams (≤7 squads) and high-kill matches</p>
+        </header>
 
-    <main>
-        <section class="scanner-controls">
-            <div class="control-header">
-                <div class="button-group">
-                    <button id="refresh-btn" class="scan-btn" onclick="startStreamFetch()" aria-label="Scan for Apex streams">
-                        <span class="btn-text">Scan Streams</span>
-                    </button>
-                    <button id="stop-btn" class="scan-btn" style="display: none; background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);" onclick="stopStreamFetch()" aria-label="Stop current scan">
-                        <span class="btn-text">Stop Scan</span>
-                    </button>
-                    <button id="train-btn" class="scan-btn secondary" onclick="startTraining()" aria-label="Train OCR with manual examples">
-                        <span class="btn-text">Train Scanner</span>
-                    </button>
-                    <button id="batch-train-btn" class="scan-btn" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);" onclick="startBatchTraining()" aria-label="Start automated training wizard">
-                        <span class="btn-text">Advanced Training</span>
-                    </button>
-                </div>
-                <div class="status-info">
-                    <time class="last-updated" id="last-updated-time" datetime="{{ last_updated }}">
-                        Last updated: {{ last_updated }}
-                    </time>
+        <div class="controls">
+            <div class="btn-row">
+                <button id="scan-btn" class="btn btn-primary" onclick="startScan()">
+                    🔍 Scan Streams
+                </button>
+                <button id="refresh-btn" class="btn btn-success" onclick="refreshStreams()" style="display: none;">
+                    🔄 Refresh (<span id="stream-count">0</span>)
+                </button>
+                <button id="stop-btn" class="btn btn-danger" onclick="stopScan()" style="display: none;">
+                    ⏹ Stop
+                </button>
+                
+                <div class="status-bar">
+                    <span><span class="connection-dot" id="connection-dot"></span> <span id="connection-text">Checking...</span></span>
+                    <span id="auto-refresh-timer"></span>
+                    <span id="last-updated"></span>
                 </div>
             </div>
+        </div>
 
-            <div id="progress-container" class="progress-section" style="display: none;" role="status" aria-live="polite">
-                <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-                    <div class="progress-fill" id="progress-fill"></div>
-                </div>
-                <p id="progress-text" class="progress-status">Starting scan...</p>
-            <div id="debug-info" class="debug-panel" style="display: none;">
-                    <h3>🔍 Debug Information</h3>
-                    <div id="debug-content"></div>
-                    <h3>🧠 OCR Learning Stats</h3>
-                    <div id="ocr-stats-content">Loading...</div>
-                </div>
-                <button id="toggle-debug" class="debug-toggle" onclick="toggleDebug()" style="display: none;">Show Debug Info</button>
+        <div class="progress-section" id="progress-section">
+            <div id="progress-text">Starting...</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
             </div>
+        </div>
 
-            <!-- OCR Processing Monitor -->
-            <div id="processing-monitor" class="progress-section" style="display: none; margin-top: 20px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <h3 style="margin: 0; color: #2c3e50;">🎯 OCR Processing Monitor</h3>
-                    <button id="toggle-monitor" class="debug-toggle" onclick="toggleMonitor()">Hide Monitor</button>
-                </div>
+        <div class="results">
+            <h2>🎯 Qualifying Streams</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Streamer</th>
+                        <th>Squads</th>
+                        <th>Players</th>
+                        <th>Kills</th>
+                        <th>Damage</th>
+                        <th>Viewers</th>
+                        <th>Checked</th>
+                        <th>Watch</th>
+                    </tr>
+                </thead>
+                <tbody id="streams-table">
+                    {% for stream in streams %}
+                    <tr>
+                        <td>{{ stream.user }}</td>
+                        <td class="{% if stream.squads and stream.squads <= 3 %}squads-low{% elif stream.squads and stream.squads <= 7 %}squads-med{% endif %}">
+                            {{ stream.squads if stream.squads else '-' }}
+                        </td>
+                        <td>{{ stream.players if stream.players else '-' }}</td>
+                        <td class="{% if stream.kills and stream.kills >= 10 %}kills-high{% endif %}">
+                            {{ stream.kills if stream.kills else '-' }}
+                        </td>
+                        <td>{{ stream.damage if stream.damage else '-' }}</td>
+                        <td>{{ stream.viewers }}</td>
+                        <td class="last-checked">{{ stream.last_checked if stream.last_checked else '-' }}</td>
+                        <td><a href="{{ stream.url }}" class="watch-link" target="_blank">Watch</a></td>
+                    </tr>
+                    {% else %}
+                    <tr id="no-results-row">
+                        <td colspan="8" class="no-results">No streams found. Click "Scan Streams" to start.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
 
-                <div id="monitor-content">
-                    <!-- Current Processing Status -->
-                    <div id="current-processing" style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 6px;">
-                        <div id="processing-status" style="font-weight: bold; color: #6c757d;">No active processing</div>
-                    </div>
-
-                    <!-- Visual ROI Display -->
-                    <div id="roi-display" style="display: none; margin-bottom: 15px;">
-                        <h4 style="margin: 0 0 10px 0; color: #2c3e50;">📸 Current Stream Screenshot</h4>
-                        <div style="position: relative; display: inline-block; border: 2px solid #dee2e6; border-radius: 6px; max-width: 100%; overflow: hidden;">
-                            <img id="current-screenshot" style="max-width: 100%; height: auto; display: block;" alt="Current processing screenshot">
-                            <!-- ROI Highlighting Boxes (Interactive) -->
-                            <div id="kills-roi" class="roi-box kills-roi" style="position: absolute; border: 3px solid #dc3545; background: rgba(220, 53, 69, 0.2); cursor: move; z-index: 10;">
-                                <div class="roi-label" style="position: absolute; top: -25px; left: 0; background: #dc3545; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; white-space: nowrap;">Kills ROI</div>
-                                <!-- Resize handles -->
-                                <div class="resize-handle nw" style="position: absolute; top: -3px; left: -3px; width: 8px; height: 8px; background: #dc3545; cursor: nw-resize;"></div>
-                                <div class="resize-handle ne" style="position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #dc3545; cursor: ne-resize;"></div>
-                                <div class="resize-handle sw" style="position: absolute; bottom: -3px; left: -3px; width: 8px; height: 8px; background: #dc3545; cursor: sw-resize;"></div>
-                                <div class="resize-handle se" style="position: absolute; bottom: -3px; right: -3px; width: 8px; height: 8px; background: #dc3545; cursor: se-resize;"></div>
-                            </div>
-                            <div id="squads-roi" class="roi-box squads-roi" style="position: absolute; border: 3px solid #007bff; background: rgba(0, 123, 255, 0.2); cursor: move; z-index: 10;">
-                                <div class="roi-label" style="position: absolute; top: -25px; left: 0; background: #007bff; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; white-space: nowrap;">Squads ROI</div>
-                                <!-- Resize handles -->
-                                <div class="resize-handle nw" style="position: absolute; top: -3px; left: -3px; width: 8px; height: 8px; background: #007bff; cursor: nw-resize;"></div>
-                                <div class="resize-handle ne" style="position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #007bff; cursor: ne-resize;"></div>
-                                <div class="resize-handle sw" style="position: absolute; bottom: -3px; left: -3px; width: 8px; height: 8px; background: #007bff; cursor: sw-resize;"></div>
-                                <div class="resize-handle se" style="position: absolute; bottom: -3px; right: -3px; width: 8px; height: 8px; background: #007bff; cursor: se-resize;"></div>
-                            </div>
-                        </div>
-
-                        <!-- ROI Controls -->
-                        <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
-                            <button id="save-roi-btn" class="scan-btn" style="font-size: 0.9rem; padding: 6px 12px;">💾 Save ROI Positions</button>
-                            <button id="reset-roi-btn" class="scan-btn secondary" style="font-size: 0.9rem; padding: 6px 12px;">🔄 Reset to Default</button>
-                            <div style="font-size: 12px; color: #6c757d; align-self: center;">
-                                <strong>Instructions:</strong> Drag boxes to adjust OCR regions • Drag corners to resize
-                            </div>
-                        </div>
-
-                        <!-- Current ROI Coordinates -->
-                        <div id="roi-coordinates" style="margin-top: 10px; font-size: 11px; color: #495057; font-family: monospace;">
-                            <div><strong>Kills ROI:</strong> <span id="kills-coords">-</span></div>
-                            <div><strong>Squads ROI:</strong> <span id="squads-coords">-</span></div>
-                        </div>
-                    </div>
-
-                    <!-- OCR Results -->
-                    <div id="ocr-results" style="display: none; margin-bottom: 15px;">
-                        <h4 style="margin: 0 0 10px 0; color: #2c3e50;">📊 OCR Detection Results</h4>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                            <div style="padding: 10px; background: rgba(220, 53, 69, 0.1); border-radius: 6px;">
-                                <strong style="color: #dc3545;">Kills Region:</strong><br>
-                                <span id="kills-text" style="font-family: monospace; font-size: 12px;">-</span><br>
-                                <span id="kills-detected" style="font-weight: bold;">Detected: -</span>
-                            </div>
-                            <div style="padding: 10px; background: rgba(0, 123, 255, 0.1); border-radius: 6px;">
-                                <strong style="color: #007bff;">Squads Region:</strong><br>
-                                <span id="squads-text" style="font-family: monospace; font-size: 12px;">-</span><br>
-                                <span id="squads-detected" style="font-weight: bold;">Detected: -</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Processing Timeline -->
-                    <div id="processing-timeline" style="display: none;">
-                        <h4 style="margin: 0 0 10px 0; color: #2c3e50;">⏱️ Processing Timeline</h4>
-                        <div id="timeline-content" style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px; background: #f8f9fa; padding: 10px; border-radius: 4px;"></div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section class="filters-section">
-            <h2>Filter Results</h2>
-            <div class="filter-buttons" role="group" aria-label="Stream filters">
-                <button class="filter-btn active" onclick="filterStreams('all')" aria-pressed="true">All Streams</button>
-                <button class="filter-btn" onclick="filterStreams('squads')" aria-pressed="false">Endgame (≤7 squads)</button>
-                <button class="filter-btn" onclick="filterStreams('kills')" aria-pressed="false">High Kills (>6)</button>
-            </div>
-        </section>
-
-        <section class="results-section">
-            <h2>Stream Results</h2>
-            <div class="table-container">
-                <table class="streams-table" role="table" aria-label="Apex Legends streams">
-                    <thead>
-                        <tr>
-                            <th scope="col">Streamer</th>
-                            <th scope="col">Squads</th>
-                            <th scope="col">Players</th>
-                            <th scope="col">Kills</th>
-                            <th scope="col">Assists</th>
-                            <th scope="col">Damage</th>
-                            <th scope="col">Viewers</th>
-                            <th scope="col">Watch</th>
-                        </tr>
-                    </thead>
-                    <tbody id="streams-tbody">
-                        {% for stream in streams %}
-                        <tr>
-                            <td>{{ stream.user }}</td>
-                            <td class="{% if stream.squads and stream.squads <= 3 %}squads-low{% elif stream.squads and stream.squads <= 7 %}squads-medium{% else %}squads-high{% endif %}">
-                                {{ stream.squads if stream.squads else '-' }}
-                            </td>
-                            <td>{{ stream.players if stream.players else '-' }}</td>
-                            <td class="{% if stream.kills and stream.kills >= 10 %}kills-high{% else %}{% endif %}">
-                                {{ stream.kills if stream.kills else '-' }}
-                            </td>
-                            <td>{{ stream.assists if stream.assists else '-' }}</td>
-                            <td class="{% if stream.damage and stream.damage >= 1000 %}kills-high{% else %}{% endif %}">
-                                {{ stream.damage if stream.damage else '-' }}
-                            </td>
-                            <td>{{ stream.viewers }}</td>
-                            <td>
-                                <a href="{{ stream.url }}" class="watch-link" target="_blank" rel="noopener noreferrer">Watch</a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-
-                {% if not streams %}
-                <div class="no-results" role="status">
-                    <p>No qualifying streams found. Click "Scan Streams" to search for matches.</p>
-                </div>
-                {% endif %}
-            </div>
-        </section>
-    </main>
-
-    <footer>
-        <p>&copy; 2025 Apex Stream Scanner. Built following modern web development practices.</p>
-    </footer>
+        <footer>
+            <p>Apex Stream Scanner • AI Vision Powered • Last updated: <span id="footer-updated">{{ last_updated or 'Never' }}</span></p>
+        </footer>
+    </div>
 
     <script>
-        // Application state management
-        const AppState = {
-            isScanning: false,
-            statusInterval: null,
-            autoRefreshInterval: null,
-            streamRefreshInterval: null,
-            currentFilter: 'all',
-            isRequesting: false, // Prevent simultaneous requests
-            connectionLost: false,
-            reconnectAttempts: 0,
+        // State
+        let isScanning = false;
+        let isRefreshing = false;
+        let pollInterval = null;
+        let autoRefreshInterval = null;
+        let autoRefreshCountdown = 30;
+        let isConnected = true;
 
-            // Configuration
-            POLL_INTERVAL_ACTIVE: 5000, // 5 seconds when scanning (increased for stability)
-            POLL_INTERVAL_IDLE: 10000, // 10 seconds when idle
-            STREAM_REFRESH_INTERVAL: 30000, // 30 seconds to refresh existing streams
-            AUTO_REFRESH_INTERVAL: 300000, // 5 minutes
-            RETRY_ATTEMPTS: 5, // More retry attempts
-            RETRY_DELAY: 3000, // 3 seconds between retries
-            REQUEST_TIMEOUT: 15000, // 15 second timeout for requests
-            MAX_RECONNECT_ATTEMPTS: 10,
-        };
+        // DOM elements
+        const scanBtn = document.getElementById('scan-btn');
+        const refreshBtn = document.getElementById('refresh-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const progressSection = document.getElementById('progress-section');
+        const progressText = document.getElementById('progress-text');
+        const progressFill = document.getElementById('progress-fill');
+        const streamsTable = document.getElementById('streams-table');
+        const streamCount = document.getElementById('stream-count');
+        const connectionDot = document.getElementById('connection-dot');
+        const connectionText = document.getElementById('connection-text');
+        const autoRefreshTimer = document.getElementById('auto-refresh-timer');
+        const lastUpdated = document.getElementById('last-updated');
+        const footerUpdated = document.getElementById('footer-updated');
 
-        // DOM element cache for better performance
-        const DOM = {
-            scanBtn: null,
-            progressContainer: null,
-            progressFill: null,
-            progressText: null,
-            lastUpdated: null,
-            streamsTable: null,
-            filterButtons: null
-        };
+        // Initialize
+        checkConnection();
+        setInterval(checkConnection, 10000);
+        startAutoRefreshTimer();
 
-        // Initialize the application
-        function initializeApp() {
-            cacheDOMElements();
-            setupEventListeners();
-            loadSavedState();
-            // Auto-refresh disabled by user request - manual start only
-            // setupAutoRefresh();
-            console.log('Apex Stream Scanner initialized - Ready for manual scan');
-        }
-
-        // Cache frequently used DOM elements
-        function cacheDOMElements() {
-            DOM.scanBtn = document.getElementById('refresh-btn');
-            DOM.progressContainer = document.getElementById('progress-container');
-            DOM.progressFill = document.getElementById('progress-fill');
-            DOM.progressText = document.getElementById('progress-text');
-            DOM.lastUpdated = document.getElementById('last-updated-time');
-            DOM.streamsTable = document.querySelector('#streams-tbody');
-            DOM.filterButtons = document.querySelectorAll('.filter-btn');
-        }
-
-        // Setup event listeners
-        function setupEventListeners() {
-            DOM.scanBtn.addEventListener('click', handleScanClick);
-            DOM.filterButtons.forEach(btn => {
-                btn.addEventListener('click', handleFilterClick);
-            });
-
-            // Keyboard shortcuts
-            document.addEventListener('keydown', handleKeyboardShortcuts);
-        }
-
-        // Load saved state from localStorage
-        function loadSavedState() {
-            const savedFilter = localStorage.getItem('apexScannerFilter');
-            if (savedFilter) {
-                AppState.currentFilter = savedFilter;
-                updateFilterUI(savedFilter);
-            }
-        }
-
-        // Save state to localStorage
-        function saveState() {
-            localStorage.setItem('apexScannerFilter', AppState.currentFilter);
-        }
-
-        // Setup smart auto-refresh functionality
-        function setupAutoRefresh() {
-            if (AppState.autoRefreshInterval) {
-                clearInterval(AppState.autoRefreshInterval);
-            }
-
-            let lastRefreshTime = 0;
-
-            function smartAutoRefresh() {
-                const now = Date.now();
-                const timeSinceLastRefresh = now - lastRefreshTime;
-
-                // Only auto-refresh if:
-                // 1. Not currently scanning
-                // 2. At least 30 seconds have passed since last refresh
-                // 3. User hasn't manually triggered a scan recently
-                if (!AppState.isScanning && timeSinceLastRefresh >= AppState.AUTO_REFRESH_INTERVAL) {
-                    console.log(`🔄 Auto-refresh triggered (${Math.round(timeSinceLastRefresh/1000)}s since last refresh)`);
-                    lastRefreshTime = now;
-                    startStreamFetch(true); // Silent mode for auto-refresh
-                }
-            }
-
-            // Check every 10 seconds for auto-refresh opportunity
-            AppState.autoRefreshInterval = setInterval(smartAutoRefresh, 10000);
-
-            // Also check immediately when page loads
-            setTimeout(smartAutoRefresh, 1000);
-        }
-
-        // Handle scan button click
-        function handleScanClick(event) {
-            event.preventDefault();
-            startStreamFetch();
-        }
-
-        // Handle filter button clicks
-        function handleFilterClick(event) {
-            const filterType = event.target.getAttribute('onclick').match(/'([^']+)'/)[1];
-            AppState.currentFilter = filterType;
-            filterStreams(filterType);
-            saveState();
-        }
-
-        // Handle keyboard shortcuts
-        function handleKeyboardShortcuts(event) {
-            if (event.ctrlKey || event.metaKey) {
-                switch(event.key) {
-                    case 'r':
-                        event.preventDefault();
-                        startStreamFetch();
-                        break;
-                    case '1':
-                        event.preventDefault();
-                        filterStreams('all');
-                        break;
-                    case '2':
-                        event.preventDefault();
-                        filterStreams('squads');
-                        break;
-                    case '3':
-                        event.preventDefault();
-                        filterStreams('kills');
-                        break;
-                }
-            }
-        }
-
-        // Main stream fetching function
-        async function startStreamFetch(silent = false) {
-            if (AppState.isScanning) {
-                showNotification('Scan already in progress', 'warning');
-                return;
-            }
-
-            AppState.isScanning = true;
-            updateScanButton(true, silent);
-
+        // Check server connection
+        async function checkConnection() {
             try {
-                const response = await fetchWithRetry('/fetch', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
+                const res = await fetch('/health', { timeout: 5000 });
+                if (res.ok) {
+                    setConnected(true);
+                } else {
+                    setConnected(false);
+                }
+            } catch (e) {
+                setConnected(false);
+            }
+        }
 
-                const data = await response.json();
+        function setConnected(connected) {
+            isConnected = connected;
+            connectionDot.className = 'connection-dot ' + (connected ? 'connected' : 'disconnected');
+            connectionText.textContent = connected ? 'Connected' : 'Disconnected';
+        }
 
+        // Start scan
+        async function startScan() {
+            if (isScanning) return;
+            
+            try {
+                const res = await fetch('/fetch', { method: 'POST' });
+                const data = await res.json();
+                
                 if (data.error) {
-                    throw new Error(data.error);
+                    alert(data.error);
+                    return;
                 }
-
-                if (!silent) {
-                    DOM.progressContainer.style.display = 'block';
-                }
-
-                startStatusPolling();
-
-            } catch (error) {
-                console.error('Failed to start stream fetching:', error);
-                showNotification(`Failed to start scanning: ${error.message}`, 'error');
-                resetScanButton();
+                
+                isScanning = true;
+                scanBtn.disabled = true;
+                scanBtn.textContent = '⏳ Scanning...';
+                stopBtn.style.display = 'inline-block';
+                progressSection.style.display = 'block';
+                
+                startPolling();
+                
+            } catch (e) {
+                alert('Failed to start scan: ' + e.message);
             }
         }
 
-        // Fetch with retry logic
-        async function fetchWithRetry(url, options, attempts = AppState.RETRY_ATTEMPTS) {
-            for (let i = 0; i < attempts; i++) {
-                try {
-                    const response = await fetch(url, options);
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    return response;
-                } catch (error) {
-                    console.warn(`Attempt ${i + 1} failed:`, error);
-                    if (i === attempts - 1) throw error;
-                    await delay(AppState.RETRY_DELAY);
-                }
+        // Stop scan
+        async function stopScan() {
+            try {
+                await fetch('/stop-fetch', { method: 'POST' });
+            } catch (e) {
+                console.error('Stop failed:', e);
             }
         }
 
-        // Start polling for status updates - SMART POLLING
-        function startStatusPolling() {
-            if (AppState.statusInterval) {
-                clearInterval(AppState.statusInterval);
+        // Refresh existing streams
+        async function refreshStreams() {
+            if (isRefreshing) return;
+            
+            try {
+                const res = await fetch('/refresh-streams', { method: 'POST' });
+                const data = await res.json();
+                
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                
+                isRefreshing = true;
+                refreshBtn.disabled = true;
+                refreshBtn.textContent = '🔄 Refreshing...';
+                
+                // Poll refresh status
+                const checkRefresh = setInterval(async () => {
+                    try {
+                        const statusRes = await fetch('/refresh-status');
+                        const status = await statusRes.json();
+                        
+                        if (!status.is_refreshing) {
+                            clearInterval(checkRefresh);
+                            isRefreshing = false;
+                            refreshBtn.disabled = false;
+                            updateStreamsFromStatus();
+                        }
+                    } catch (e) {
+                        clearInterval(checkRefresh);
+                        isRefreshing = false;
+                        refreshBtn.disabled = false;
+                    }
+                }, 2000);
+                
+            } catch (e) {
+                alert('Failed to refresh: ' + e.message);
             }
+        }
 
-            // Use different polling rates for active vs idle states
-            const pollInterval = AppState.isScanning ? AppState.POLL_INTERVAL_ACTIVE : AppState.POLL_INTERVAL_IDLE;
-
-            AppState.statusInterval = setInterval(async () => {
+        // Start polling for status
+        function startPolling() {
+            if (pollInterval) clearInterval(pollInterval);
+            
+            pollInterval = setInterval(async () => {
                 try {
-                    // Prevent simultaneous requests
-                    if (AppState.isRequesting) {
-                        console.log('⚠️ Skipping poll - request already in progress');
-                        return;
+                    const res = await fetch('/status');
+                    const data = await res.json();
+                    
+                    // Update progress
+                    if (data.total_streams > 0) {
+                        const pct = Math.round((data.current_stream / data.total_streams) * 100);
+                        progressFill.style.width = pct + '%';
+                        progressText.textContent = data.progress;
                     }
-
-                    AppState.isRequesting = true;
-
-                    const response = await fetch('/status', {
-                        timeout: AppState.REQUEST_TIMEOUT,
-                        signal: AbortSignal.timeout(AppState.REQUEST_TIMEOUT)
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    
+                    // Update table in real-time
+                    if (data.streams && data.streams.length > 0) {
+                        updateStreamsTable(data.streams);
                     }
-
-                    const data = await response.json();
-
-                    updateProgress(data);
-
+                    
+                    // Check if done
                     if (!data.is_fetching) {
-                        // Scanning complete
-                        clearInterval(AppState.statusInterval);
-                        AppState.statusInterval = null;
-
+                        clearInterval(pollInterval);
+                        pollInterval = null;
+                        isScanning = false;
+                        
+                        scanBtn.disabled = false;
+                        scanBtn.textContent = '🔍 Scan Streams';
+                        stopBtn.style.display = 'none';
+                        progressSection.style.display = 'none';
+                        
                         updateStreamsTable(data.streams);
                         updateLastUpdated(data.last_updated);
-                        resetScanButton();
-
-                        DOM.progressContainer.style.display = 'none';
-                        AppState.isScanning = false;
-
-                        showNotification(`Scan complete! Found ${data.streams.length} streams.`, 'success');
+                        
+                        // Show refresh button if we have streams
+                        if (data.streams.length > 0) {
+                            refreshBtn.style.display = 'inline-block';
+                            streamCount.textContent = data.streams.length;
+                            refreshBtn.textContent = '🔄 Refresh (' + data.streams.length + ')';
+                        }
                     }
-
-                    AppState.isRequesting = false;
-
-                } catch (error) {
-                    console.error('Status polling error:', error);
-                    clearInterval(AppState.statusInterval);
-                    AppState.statusInterval = null;
-                    AppState.isScanning = false;
-                    resetScanButton();
-                    showNotification('Lost connection to scanner', 'error');
-                    AppState.isRequesting = false;
+                    
+                    setConnected(true);
+                    
+                } catch (e) {
+                    console.error('Poll error:', e);
+                    setConnected(false);
                 }
-            }, pollInterval);
-
-            console.log(`🔄 Started status polling with ${pollInterval}ms interval (${AppState.isScanning ? 'ACTIVE' : 'IDLE'})`);
-        }
-
-        // Update progress display
-        function updateProgress(data) {
-            if (!data.total_streams) return;
-
-            const percentage = Math.round((data.current_stream / data.total_streams) * 100);
-            DOM.progressFill.style.width = percentage + '%';
-            DOM.progressFill.setAttribute('aria-valuenow', percentage);
-            DOM.progressText.textContent = data.progress;
+            }, 3000);
         }
 
         // Update streams table
         function updateStreamsTable(streams) {
-            if (!DOM.streamsTable) return;
-
-            DOM.streamsTable.innerHTML = '';
-
-            if (streams.length === 0) {
-                const emptyRow = document.createElement('tr');
-                emptyRow.innerHTML = '<td colspan="5" style="text-align: center; padding: 40px; color: #6c757d;">No qualifying streams found. Click "Scan Streams" to search for matches.</td>';
-                DOM.streamsTable.appendChild(emptyRow);
+            if (!streams || streams.length === 0) {
+                streamsTable.innerHTML = '<tr id="no-results-row"><td colspan="8" class="no-results">No qualifying streams found.</td></tr>';
+                refreshBtn.style.display = 'none';
                 return;
             }
-
-            streams.forEach(stream => {
-                const row = createStreamRow(stream);
-                DOM.streamsTable.appendChild(row);
+            
+            let html = '';
+            streams.forEach(s => {
+                const squadsClass = s.squads <= 3 ? 'squads-low' : (s.squads <= 7 ? 'squads-med' : '');
+                const killsClass = s.kills >= 10 ? 'kills-high' : '';
+                
+                html += `<tr>
+                    <td>${s.user}</td>
+                    <td class="${squadsClass}">${s.squads || '-'}</td>
+                    <td>${s.players || '-'}</td>
+                    <td class="${killsClass}">${s.kills || '-'}</td>
+                    <td>${s.damage || '-'}</td>
+                    <td>${s.viewers}</td>
+                    <td class="last-checked">${s.last_checked || '-'}</td>
+                    <td><a href="${s.url}" class="watch-link" target="_blank">Watch</a></td>
+                </tr>`;
             });
-
-            // Reapply current filter
-            filterStreams(AppState.currentFilter, false);
-        }
-
-        // Create a stream table row
-        function createStreamRow(stream) {
-            const row = document.createElement('tr');
-
-            const squadsClass = getSquadsClass(stream.squads);
-            const killsClass = (stream.kills && stream.kills >= 10) ? 'kills-high' : '';
-            const damageClass = (stream.damage && stream.damage >= 1000) ? 'kills-high' : '';
-
-            row.innerHTML = `
-                <td>${escapeHtml(stream.user)}</td>
-                <td class="${squadsClass}">${stream.squads || '-'}</td>
-                <td>${stream.players || '-'}</td>
-                <td class="${killsClass}">${stream.kills || '-'}</td>
-                <td>${stream.assists || '-'}</td>
-                <td class="${damageClass}">${stream.damage || '-'}</td>
-                <td>${stream.viewers || 0}</td>
-                <td>
-                    <a href="${escapeHtml(stream.url)}" class="watch-link" target="_blank" rel="noopener noreferrer">
-                        Watch
-                    </a>
-                </td>
-            `;
-
-            return row;
-        }
-
-        // Get CSS class for squads count
-        function getSquadsClass(squads) {
-            if (!squads) return '';
-            if (squads <= 3) return 'squads-low';
-            if (squads <= 7) return 'squads-medium';
-            return 'squads-high';
+            
+            streamsTable.innerHTML = html;
+            
+            // Update refresh button
+            refreshBtn.style.display = 'inline-block';
+            streamCount.textContent = streams.length;
+            refreshBtn.textContent = '🔄 Refresh (' + streams.length + ')';
         }
 
         // Update last updated time
-        function updateLastUpdated(timestamp) {
-            if (DOM.lastUpdated) {
-                DOM.lastUpdated.textContent = timestamp;
-                DOM.lastUpdated.setAttribute('datetime', timestamp);
+        function updateLastUpdated(time) {
+            if (time) {
+                lastUpdated.textContent = 'Updated: ' + time;
+                footerUpdated.textContent = time;
             }
         }
 
-        // Update scan button state
-        function updateScanButton(isScanning, silent = false) {
-            if (!DOM.scanBtn) return;
-
-            DOM.scanBtn.disabled = isScanning;
-
-            // Show/hide stop button
-            const stopBtn = document.getElementById('stop-btn');
-            if (stopBtn) {
-                stopBtn.style.display = isScanning ? 'inline-flex' : 'none';
-            }
-
-            if (isScanning && !silent) {
-                DOM.scanBtn.innerHTML = '<div class="loading"></div> Scanning...';
-            } else if (!isScanning) {
-                DOM.scanBtn.innerHTML = '<span class="btn-text">Scan Streams</span>';
-            }
-        }
-
-        // Stop stream fetching
-        async function stopStreamFetch() {
-            try {
-                const response = await fetch('/stop-fetch', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-
-                const data = await response.json();
-
-                if (data.message) {
-                    showNotification('Stop signal sent - scan will halt soon', 'info');
-                } else if (data.error) {
-                    showNotification(`Stop failed: ${data.error}`, 'error');
-                }
-
-            } catch (error) {
-                console.error('Failed to stop scan:', error);
-                showNotification('Failed to stop scan', 'error');
-            }
-        }
-
-        // Reset scan button
-        function resetScanButton() {
-            updateScanButton(false);
-            AppState.isScanning = false;
-        }
-
-        // Filter streams
-        function filterStreams(type, updateUI = true) {
-            AppState.currentFilter = type;
-
-            if (updateUI) {
-                updateFilterUI(type);
-            }
-
-            const rows = DOM.streamsTable.querySelectorAll('tr');
-
-            rows.forEach(row => {
-                if (row.cells.length < 5) return; // Skip non-data rows
-
-                const squadsCell = row.cells[1].textContent.trim();
-                const killsCell = row.cells[2].textContent.trim();
-
-                let show = false;
-
-                switch (type) {
-                    case 'all':
-                        show = true;
-                        break;
-                    case 'squads':
-                        show = squadsCell !== '-' && parseInt(squadsCell) <= 7;
-                        break;
-                    case 'kills':
-                        show = killsCell !== '-' && parseInt(killsCell) > 6;
-                        break;
-                }
-
-                row.style.display = show ? '' : 'none';
-            });
-        }
-
-        // Update filter button UI
-        function updateFilterUI(activeFilter) {
-            DOM.filterButtons.forEach(btn => {
-                const btnFilter = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
-                const isActive = btnFilter === activeFilter;
-
-                btn.classList.toggle('active', isActive);
-                btn.setAttribute('aria-pressed', isActive);
-            });
-        }
-
-        // Show notification (could be enhanced with a proper notification system)
-        function showNotification(message, type = 'info') {
-            console.log(`[${type.toUpperCase()}] ${message}`);
-
-            // For now, use alert for errors, console for others
-            if (type === 'error') {
-                alert(message);
-            }
-        }
-
-        // HTML escape utility
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Delay utility
-        function delay(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
-        }
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
-            if (AppState.statusInterval) {
-                clearInterval(AppState.statusInterval);
-            }
-            if (AppState.autoRefreshInterval) {
-                clearInterval(AppState.autoRefreshInterval);
-            }
-        });
-
-        // Debug functionality
-        function toggleDebug() {
-            const debugPanel = document.getElementById('debug-info');
-            const isVisible = debugPanel.style.display !== 'none';
-            debugPanel.style.display = isVisible ? 'none' : 'block';
-        }
-
-        // OCR Processing Monitor functionality
-        let monitorPollingInterval = null;
-
-        function toggleMonitor() {
-            const monitor = document.getElementById('processing-monitor');
-            const toggleBtn = document.getElementById('toggle-monitor');
-
-            if (monitor.style.display === 'none') {
-                monitor.style.display = 'block';
-                toggleBtn.textContent = 'Hide Monitor';
-                startMonitorPolling();
-            } else {
-                monitor.style.display = 'none';
-                toggleBtn.textContent = 'Show Monitor';
-                stopMonitorPolling();
-            }
-        }
-
-        function startMonitorPolling() {
-            if (monitorPollingInterval) {
-                clearInterval(monitorPollingInterval);
-            }
-
-            // Use same smart polling as main status polling
-            const pollInterval = AppState.isScanning ? AppState.POLL_INTERVAL_ACTIVE : AppState.POLL_INTERVAL_IDLE;
-
-            monitorPollingInterval = setInterval(() => {
-                if (!AppState.isRequesting) {
-                    updateProcessingMonitor();
-                }
-            }, pollInterval);
-
-            // Update immediately
-            updateProcessingMonitor();
-
-            console.log(`🔄 Started monitor polling with ${pollInterval}ms interval`);
-        }
-
-        function stopMonitorPolling() {
-            if (monitorPollingInterval) {
-                clearInterval(monitorPollingInterval);
-                monitorPollingInterval = null;
-            }
-        }
-
-        async function updateProcessingMonitor() {
-            try {
-                const response = await fetch('/processing-details');
-                const data = await response.json();
-
-                updateProcessingStatus(data);
-                updateROIDisplay(data);
-                updateOCRResults(data);
-                updateProcessingTimeline(data);
-
-            } catch (error) {
-                console.error('Failed to update processing monitor:', error);
-            }
-        }
-
-        function updateProcessingStatus(data) {
-            const statusDiv = document.getElementById('processing-status');
-            const currentStream = data.current_stream;
-
-            if (!currentStream) {
-                statusDiv.textContent = 'No active processing';
-                statusDiv.style.color = '#6c757d';
-                return;
-            }
-
-            const statusEmoji = getStatusEmoji(data.status);
-            const statusColor = getStatusColor(data.status);
-
-            statusDiv.innerHTML = `
-                <strong>${statusEmoji} ${currentStream.username}</strong>
-                (${currentStream.viewers} viewers) -
-                <span style="color: ${statusColor};">${data.status.toUpperCase()}</span>
-            `;
-        }
-
-        function getStatusEmoji(status) {
-            switch (status) {
-                case 'idle': return '⏸️';
-                case 'processing': return '🟡';
-                case 'completed': return '✅';
-                case 'failed': return '❌';
-                case 'no_content': return '⚠️';
-                default: return '🔄';
-            }
-        }
-
-        function getStatusColor(status) {
-            switch (status) {
-                case 'idle': return '#6c757d';
-                case 'processing': return '#ffc107';
-                case 'completed': return '#28a745';
-                case 'failed': return '#dc3545';
-                case 'no_content': return '#fd7e14';
-                default: return '#007bff';
-            }
-        }
-
-        function updateROIDisplay(data) {
-            const roiDisplay = document.getElementById('roi-display');
-            const screenshotImg = document.getElementById('current-screenshot');
-            const killsBox = document.getElementById('kills-roi');
-            const squadsBox = document.getElementById('squads-roi');
-
-            if (!data.screenshot) {
-                roiDisplay.style.display = 'none';
-                return;
-            }
-
-            roiDisplay.style.display = 'block';
-            screenshotImg.src = data.screenshot;
-
-            // Update ROI box positions and sizes
-            if (data.roi_regions && data.roi_regions.kills) {
-                const kills = data.roi_regions.kills;
-                killsBox.style.left = kills.x + 'px';
-                killsBox.style.top = kills.y + 'px';
-                killsBox.style.width = kills.width + 'px';
-                killsBox.style.height = kills.height + 'px';
-                killsBox.style.display = 'block';
-            } else {
-                killsBox.style.display = 'none';
-            }
-
-            if (data.roi_regions && data.roi_regions.squads) {
-                const squads = data.roi_regions.squads;
-                squadsBox.style.left = squads.x + 'px';
-                squadsBox.style.top = squads.y + 'px';
-                squadsBox.style.width = squads.width + 'px';
-                squadsBox.style.height = squads.height + 'px';
-                squadsBox.style.display = 'block';
-            } else {
-                squadsBox.style.display = 'none';
-            }
-        }
-
-        function updateOCRResults(data) {
-            const ocrResults = document.getElementById('ocr-results');
-            const killsText = document.getElementById('kills-text');
-            const squadsText = document.getElementById('squads-text');
-            const killsDetected = document.getElementById('kills-detected');
-            const squadsDetected = document.getElementById('squads-detected');
-
-            if (!data.ocr_results) {
-                ocrResults.style.display = 'none';
-                return;
-            }
-
-            ocrResults.style.display = 'block';
-
-            // Update text results
-            killsText.textContent = data.ocr_results.kills_text || '-';
-            squadsText.textContent = data.ocr_results.squads_text || '-';
-
-            // Update detected values
-            killsDetected.textContent = data.ocr_results.kills_detected ? `Detected: ${data.ocr_results.kills_detected}` : 'Detected: -';
-            squadsDetected.textContent = data.ocr_results.squads_detected ? `Detected: ${data.ocr_results.squads_detected}` : 'Detected: -';
-        }
-
-        function updateProcessingTimeline(data) {
-            const timelineDiv = document.getElementById('processing-timeline');
-            const timelineContent = document.getElementById('timeline-content');
-
-            if (!data.timeline || data.timeline.length === 0) {
-                timelineDiv.style.display = 'none';
-                return;
-            }
-
-            timelineDiv.style.display = 'block';
-
-            // Display last 10 timeline entries
-            const recentEntries = data.timeline.slice(-10);
-            timelineContent.innerHTML = recentEntries.join('<br>');
-
-            // Auto-scroll to bottom
-            timelineContent.scrollTop = timelineContent.scrollHeight;
-        }
-
-        // Add monitor toggle button to the scan controls
-        function addMonitorToggle() {
-            const controlHeader = document.querySelector('.control-header');
-            if (controlHeader && !document.getElementById('toggle-monitor-btn')) {
-                const monitorBtn = document.createElement('button');
-                monitorBtn.id = 'toggle-monitor-btn';
-                monitorBtn.className = 'scan-btn secondary';
-                monitorBtn.textContent = 'OCR Monitor';
-                monitorBtn.onclick = () => toggleMonitor();
-                monitorBtn.style.fontSize = '0.9rem';
-                monitorBtn.style.padding = '8px 16px';
-
-                // Insert after the existing buttons
-                const buttonGroup = controlHeader.querySelector('.button-group');
-                if (buttonGroup) {
-                    buttonGroup.appendChild(monitorBtn);
-                }
-            }
-        }
-
-        // Add monitor toggle when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(addMonitorToggle, 1000); // Delay to ensure DOM is ready
-        });
-
-        // Interactive ROI Box Functionality
-        let draggedElement = null;
-        let dragOffset = { x: 0, y: 0 };
-        let isResizing = false;
-        let resizeHandle = null;
-        let customROIs = {
-            kills: { x: 0.85, y: 0.05, width: 0.15, height: 0.10 }, // Default relative positions
-            squads: { x: 0.85, y: 0.85, width: 0.15, height: 0.10 }
-        };
-
-        function initializeROIInteractions() {
-            const killsBox = document.getElementById('kills-roi');
-            const squadsBox = document.getElementById('squads-roi');
-
-            if (killsBox) {
-                setupROIDragAndResize(killsBox, 'kills');
-            }
-            if (squadsBox) {
-                setupROIDragAndResize(squadsBox, 'squads');
-            }
-
-            // Setup control buttons
-            const saveBtn = document.getElementById('save-roi-btn');
-            const resetBtn = document.getElementById('reset-roi-btn');
-
-            if (saveBtn) {
-                saveBtn.addEventListener('click', saveCustomROIs);
-            }
-            if (resetBtn) {
-                resetBtn.addEventListener('click', resetROIsToDefault);
-            }
-
-            updateROIDisplay();
-        }
-
-        function setupROIDragAndResize(roiElement, roiType) {
-            const img = document.getElementById('current-screenshot');
-            if (!img) return;
-
-            // Mouse down on the ROI box (for dragging)
-            roiElement.addEventListener('mousedown', function(e) {
-                if (e.target.classList.contains('resize-handle')) {
-                    // Handle resize
-                    isResizing = true;
-                    resizeHandle = e.target.classList[1]; // 'nw', 'ne', 'sw', 'se'
-                    draggedElement = roiElement;
-                    e.preventDefault();
-                } else {
-                    // Handle drag
-                    draggedElement = roiElement;
-                    const rect = roiElement.getBoundingClientRect();
-                    dragOffset.x = e.clientX - rect.left;
-                    dragOffset.y = e.clientY - rect.top;
-                    e.preventDefault();
-                }
-
-                document.addEventListener('mousemove', handleROIDrag);
-                document.addEventListener('mouseup', stopROIDrag);
-            });
-        }
-
-        function handleROIDrag(e) {
-            if (!draggedElement) return;
-
-            const img = document.getElementById('current-screenshot');
-            const imgRect = img.getBoundingClientRect();
-
-            if (isResizing) {
-                // Handle resizing
-                resizeROI(draggedElement, e, resizeHandle, imgRect);
-            } else {
-                // Handle dragging
-                let newLeft = e.clientX - dragOffset.x - imgRect.left;
-                let newTop = e.clientY - dragOffset.y - imgRect.top;
-
-                // Constrain to image bounds
-                const maxLeft = imgRect.width - draggedElement.offsetWidth;
-                const maxTop = imgRect.height - draggedElement.offsetHeight;
-
-                newLeft = Math.max(0, Math.min(newLeft, maxLeft));
-                newTop = Math.max(0, Math.min(newTop, maxTop));
-
-                draggedElement.style.left = newLeft + 'px';
-                draggedElement.style.top = newTop + 'px';
-            }
-
-            updateROIDisplay();
-        }
-
-        function resizeROI(element, e, handle, imgRect) {
-            const rect = element.getBoundingClientRect();
-            let newWidth, newHeight, newLeft = rect.left - imgRect.left, newTop = rect.top - imgRect.top;
-
-            switch (handle) {
-                case 'nw':
-                    newWidth = rect.right - e.clientX;
-                    newHeight = rect.bottom - e.clientY;
-                    newLeft = e.clientX - imgRect.left;
-                    newTop = e.clientY - imgRect.top;
-                    break;
-                case 'ne':
-                    newWidth = e.clientX - rect.left;
-                    newHeight = rect.bottom - e.clientY;
-                    newTop = e.clientY - imgRect.top;
-                    break;
-                case 'sw':
-                    newWidth = rect.right - e.clientX;
-                    newHeight = e.clientY - rect.top;
-                    newLeft = e.clientX - imgRect.left;
-                    break;
-                case 'se':
-                    newWidth = e.clientX - rect.left;
-                    newHeight = e.clientY - rect.top;
-                    break;
-            }
-
-            // Minimum size constraints
-            newWidth = Math.max(20, newWidth);
-            newHeight = Math.max(20, newHeight);
-
-            // Boundary constraints
-            newLeft = Math.max(0, Math.min(newLeft, imgRect.width - newWidth));
-            newTop = Math.max(0, Math.min(newTop, imgRect.height - newHeight));
-
-            element.style.left = newLeft + 'px';
-            element.style.top = newTop + 'px';
-            element.style.width = newWidth + 'px';
-            element.style.height = newHeight + 'px';
-        }
-
-        function stopROIDrag() {
-            draggedElement = null;
-            isResizing = false;
-            resizeHandle = null;
-            document.removeEventListener('mousemove', handleROIDrag);
-            document.removeEventListener('mouseup', stopROIDrag);
-        }
-
-        function updateROIDisplay() {
-            const killsCoords = document.getElementById('kills-coords');
-            const squadsCoords = document.getElementById('squads-coords');
-
-            if (killsCoords) {
-                const killsBox = document.getElementById('kills-roi');
-                if (killsBox) {
-                    const rect = killsBox.getBoundingClientRect();
-                    killsCoords.textContent = `${Math.round(rect.left)}, ${Math.round(rect.top)} | ${Math.round(rect.width)}×${Math.round(rect.height)}`;
-                }
-            }
-
-            if (squadsCoords) {
-                const squadsBox = document.getElementById('squads-roi');
-                if (squadsBox) {
-                    const rect = squadsBox.getBoundingClientRect();
-                    squadsCoords.textContent = `${Math.round(rect.left)}, ${Math.round(rect.top)} | ${Math.round(rect.width)}×${Math.round(rect.height)}`;
-                }
-            }
-        }
-
-        function saveCustomROIs() {
-            const img = document.getElementById('current-screenshot');
-            if (!img) return;
-
-            const imgRect = img.getBoundingClientRect();
-
-            // Save kills ROI
-            const killsBox = document.getElementById('kills-roi');
-            if (killsBox) {
-                const rect = killsBox.getBoundingClientRect();
-                customROIs.kills = {
-                    x: (rect.left - imgRect.left) / imgRect.width,
-                    y: (rect.top - imgRect.top) / imgRect.height,
-                    width: rect.width / imgRect.width,
-                    height: rect.height / imgRect.height
-                };
-            }
-
-            // Save squads ROI
-            const squadsBox = document.getElementById('squads-roi');
-            if (squadsBox) {
-                const rect = squadsBox.getBoundingClientRect();
-                customROIs.squads = {
-                    x: (rect.left - imgRect.left) / imgRect.width,
-                    y: (rect.top - imgRect.top) / imgRect.height,
-                    width: rect.width / imgRect.width,
-                    height: rect.height / imgRect.height
-                };
-            }
-
-            // Save to localStorage
-            localStorage.setItem('apexScannerCustomROIs', JSON.stringify(customROIs));
-
-            showNotification('ROI positions saved! These will be used for future OCR processing.', 'success');
-        }
-
-        function resetROIsToDefault() {
-            // Reset to default positions
-            customROIs = {
-                kills: { x: 0.85, y: 0.05, width: 0.15, height: 0.10 },
-                squads: { x: 0.85, y: 0.85, width: 0.15, height: 0.10 }
-            };
-
-            // Clear localStorage
-            localStorage.removeItem('apexScannerCustomROIs');
-
-            // Reinitialize ROI positions
-            updateROIBoxesFromCustomROIs();
-
-            showNotification('ROI positions reset to defaults.', 'info');
-        }
-
-        function loadCustomROIs() {
-            const saved = localStorage.getItem('apexScannerCustomROIs');
-            if (saved) {
-                try {
-                    customROIs = JSON.parse(saved);
-                } catch (e) {
-                    console.error('Failed to load custom ROIs:', e);
-                }
-            }
-        }
-
-        function updateROIBoxesFromCustomROIs() {
-            const img = document.getElementById('current-screenshot');
-            if (!img) return;
-
-            const imgRect = img.getBoundingClientRect();
-
-            // Update kills ROI
-            const killsBox = document.getElementById('kills-roi');
-            if (killsBox && customROIs.kills) {
-                killsBox.style.left = (customROIs.kills.x * imgRect.width) + 'px';
-                killsBox.style.top = (customROIs.kills.y * imgRect.height) + 'px';
-                killsBox.style.width = (customROIs.kills.width * imgRect.width) + 'px';
-                killsBox.style.height = (customROIs.kills.height * imgRect.height) + 'px';
-            }
-
-            // Update squads ROI
-            const squadsBox = document.getElementById('squads-roi');
-            if (squadsBox && customROIs.squads) {
-                squadsBox.style.left = (customROIs.squads.x * imgRect.width) + 'px';
-                squadsBox.style.top = (customROIs.squads.y * imgRect.height) + 'px';
-                squadsBox.style.width = (customROIs.squads.width * imgRect.width) + 'px';
-                squadsBox.style.height = (customROIs.squads.height * imgRect.height) + 'px';
-            }
-
-            updateROIDisplay();
-        }
-
-        // Load custom ROIs when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            loadCustomROIs();
-        });
-
-        // Initialize ROI interactions when monitor is shown
-        function toggleMonitor() {
-            const monitor = document.getElementById('processing-monitor');
-            const toggleBtn = document.getElementById('toggle-monitor');
-
-            if (monitor.style.display === 'none') {
-                monitor.style.display = 'block';
-                toggleBtn.textContent = 'Hide Monitor';
-                startMonitorPolling();
-                // Initialize ROI interactions after a short delay
-                setTimeout(initializeROIInteractions, 500);
-            } else {
-                monitor.style.display = 'none';
-                toggleBtn.textContent = 'Show Monitor';
-                stopMonitorPolling();
-            }
-        }
-
-        // REAL-TIME status polling with live results
-        function startStatusPolling() {
-            if (AppState.statusInterval) {
-                clearInterval(AppState.statusInterval);
-            }
-
-            let debugLog = [];
-            const startTime = Date.now();
-            let lastStreamCount = 0;
-
-            AppState.statusInterval = setInterval(async () => {
-                try {
-                    const response = await fetch('/status');
-                    const data = await response.json();
-
-                    // Collect debug information
-                    const elapsed = Math.round((Date.now() - startTime) / 1000);
-                    debugLog.push(`[${elapsed}s] ${data.progress} (${data.current_stream || 0}/${data.total_streams || 0})`);
-
-                    // Keep only last 20 entries
-                    if (debugLog.length > 20) {
-                        debugLog = debugLog.slice(-20);
-                    }
-
-                    // Update debug panel
-                    updateDebugInfo(debugLog, data);
-
-                    updateProgress(data);
-
-                    // REAL-TIME UPDATE: Update streams table immediately if new results
-                    if (data.streams && data.streams.length > lastStreamCount) {
-                        console.log(`🔄 REAL-TIME: New results! ${data.streams.length} streams found so far`);
-                        updateStreamsTable(data.streams);
-                        updateLastUpdated(data.last_updated);
-                        lastStreamCount = data.streams.length;
-
-                        // Show notification for first few streams
-                        if (lastStreamCount <= 5) {
-                            showNotification(`Found ${lastStreamCount} qualifying stream${lastStreamCount > 1 ? 's' : ''} so far!`, 'info');
-                        }
-                    }
-
-                    if (!data.is_fetching) {
-                        // Scanning complete
-                        clearInterval(AppState.statusInterval);
-                        AppState.statusInterval = null;
-
-                        updateStreamsTable(data.streams);
-                        updateLastUpdated(data.last_updated);
-                        resetScanButton();
-
-                        DOM.progressContainer.style.display = 'none';
-                        AppState.isScanning = false;
-
-                        // Final debug update
-                        debugLog.push(`[${Math.round((Date.now() - startTime) / 1000)}s] Scan complete! Found ${data.streams.length} streams.`);
-                        updateDebugInfo(debugLog, data);
-
-                        showNotification(`Scan complete! Found ${data.streams.length} qualifying streams.`, 'success');
-                    }
-                } catch (error) {
-                    console.error('Status polling error:', error);
-                    clearInterval(AppState.statusInterval);
-                    AppState.statusInterval = null;
-                    AppState.isScanning = false;
-                    resetScanButton();
-
-                    debugLog.push(`[ERROR] ${error.message}`);
-                    updateDebugInfo(debugLog);
-
-                    showNotification('Lost connection to scanner', 'error');
-                }
-            }, AppState.POLL_INTERVAL);
-        }
-
-        // Update debug information display
-        function updateDebugInfo(log, statusData = {}) {
-            const debugContent = document.getElementById('debug-content');
-            const debugToggle = document.getElementById('toggle-debug');
-
-            if (debugContent && log.length > 0) {
-                debugContent.textContent = log.join('\n');
-
-                // Show debug toggle after first status update
-                if (debugToggle && debugToggle.style.display === 'none') {
-                    debugToggle.style.display = 'inline-block';
-                }
-
-                // Auto-scroll to bottom
-                debugContent.scrollTop = debugContent.scrollHeight;
-            }
-
-            // Update OCR learning stats
-            updateOCRStats();
-        }
-
-        // Fetch and display OCR learning statistics
-        async function updateOCRStats() {
-            try {
-                const response = await fetch('/ocr-stats');
-                const data = await response.json();
-
-                const statsContent = document.getElementById('ocr-stats-content');
-                if (statsContent && data.ocr_learning_stats) {
-                    const stats = data.ocr_learning_stats;
-                    const bestVariants = stats.best_variants || [];
-
-                    let html = `
-                        <div style="margin-bottom: 10px;">
-                            <strong>Total Detections:</strong> ${stats.total_detections}<br>
-                            <strong>Success Rate:</strong> ${(stats.success_rate * 100).toFixed(1)}%<br>
-                            <strong>Streams Analyzed:</strong> ${data.streams_analyzed}
-                        </div>
-                    `;
-
-                    if (bestVariants.length > 0) {
-                        html += '<div><strong>Best Preprocessing Methods:</strong><br>';
-                        bestVariants.forEach((variant, index) => {
-                            const successRate = (variant[1] * 100).toFixed(1);
-                            const totalAttempts = variant[2];
-                            html += `${index + 1}. Method ${variant[0]}: ${successRate}% success (${totalAttempts} attempts)<br>`;
-                        });
-                        html += '</div>';
-                    }
-
-                    statsContent.innerHTML = html;
-                }
-            } catch (error) {
-                console.error('Failed to fetch OCR stats:', error);
-                const statsContent = document.getElementById('ocr-stats-content');
-                if (statsContent) {
-                    statsContent.innerHTML = '<em>Error loading stats</em>';
-                }
-            }
-        }
-
-        // Training system state
-        const TrainingState = {
-            isTraining: false,
-            isBatchTraining: false,
-            currentScreenshot: null,
-            currentUsername: null,
-            currentTimestamp: null,
-            batchStreams: [],
-            currentStreamIndex: 0,
-            totalTemplatesSaved: 0
-        };
-
-        // Start training process
-        async function startTraining() {
-            const username = prompt('Enter a Twitch username to capture a training screenshot from:');
-            if (!username || !username.trim()) {
-                return;
-            }
-
-            TrainingState.isTraining = true;
-            TrainingState.currentUsername = username.trim();
-
-            try {
-                showNotification('Capturing training screenshot...', 'info');
-
-                const response = await fetch(`/capture-screenshot/${encodeURIComponent(username)}`);
-                const data = await response.json();
-
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-
-                TrainingState.currentScreenshot = data.screenshot;
-                TrainingState.currentTimestamp = data.timestamp;
-
-                // Show training interface
-                showTrainingInterface(data);
-
-            } catch (error) {
-                console.error('Training capture failed:', error);
-                showNotification(`Failed to capture screenshot: ${error.message}`, 'error');
-                TrainingState.isTraining = false;
-            }
-        }
-
-        // Show training interface
-        function showTrainingInterface(data) {
-            // Create modal overlay
-            const modal = document.createElement('div');
-            modal.id = 'training-modal';
-            modal.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0,0,0,0.8);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                z-index: 10000;
-            `;
-
-            modal.innerHTML = `
-                <div style="background: white; padding: 30px; border-radius: 12px; max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto;">
-                    <h2 style="margin-top: 0; color: #2c3e50;">🎯 Train OCR Scanner</h2>
-                    <p><strong>Instructions:</strong> Draw rectangles around the elements you want the scanner to detect:</p>
-                    <ul style="margin-bottom: 20px;">
-                        <li><strong>Squads text:</strong> Draw a box around "X squads left" or similar text</li>
-                        <li><strong>Head icons:</strong> Draw boxes around kill count head silhouettes</li>
-                        <li><strong>Multiple regions:</strong> You can draw multiple boxes for different elements</li>
-                    </ul>
-
-                    <div style="position: relative; margin: 20px 0; border: 2px solid #dee2e6; border-radius: 8px;">
-                        <img id="training-image" src="${data.screenshot}" alt="Stream screenshot for training" style="max-width: 100%; height: auto; display: block;" crossorigin="anonymous">
-                        <canvas id="training-canvas" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
-                    </div>
-
-                    <div style="margin-top: 20px;">
-                        <button id="save-training-btn" class="scan-btn" style="margin-right: 10px;">Save Training Data</button>
-                        <button id="cancel-training-btn" class="scan-btn secondary">Cancel</button>
-                    </div>
-
-                    <div id="training-status" style="margin-top: 15px; font-weight: bold;"></div>
-                </div>
-            `;
-
-            document.body.appendChild(modal);
-
-            // Setup canvas for drawing
-            const img = modal.querySelector('#training-image');
-            const canvas = modal.querySelector('#training-canvas');
-
-            img.onload = () => {
-                canvas.width = img.offsetWidth;
-                canvas.height = img.offsetHeight;
-                setupCanvasDrawing(canvas, img);
-            };
-
-            // Setup buttons
-            modal.querySelector('#save-training-btn').onclick = () => saveTrainingData(data);
-            modal.querySelector('#cancel-training-btn').onclick = () => closeTrainingModal();
-
-            // Close on escape key
-            document.addEventListener('keydown', function closeOnEscape(e) {
-                if (e.key === 'Escape') {
-                    closeTrainingModal();
-                    document.removeEventListener('keydown', closeOnEscape);
-                }
-            });
-        }
-
-        // Setup canvas drawing functionality - REVISED BULLETPROOF VERSION
-        function setupCanvasDrawing(canvas, img) {
-            console.log('🎨 Setting up REVISED canvas drawing...');
-
-            // Ensure container is positioned correctly
-            const container = canvas.parentElement;
-            container.style.position = 'relative'; // Ensure relative positioning for absolute children
-
-            // Force canvas to match image dimensions exactly
-            canvas.width = img.offsetWidth;
-            canvas.height = img.offsetHeight;
+        // Auto-refresh timer
+        function startAutoRefreshTimer() {
+            autoRefreshCountdown = 30;
             
-            // Canvas styling to ensure it's overlaying correctly
-            canvas.style.position = 'absolute';
-            canvas.style.top = '0';
-            canvas.style.left = '0';
-            canvas.style.width = '100%';
-            canvas.style.height = '100%';
-            canvas.style.zIndex = '100'; // High z-index to ensure it captures events
-            canvas.style.cursor = 'crosshair';
-            canvas.style.touchAction = 'none'; // Prevent scrolling on touch devices
-
-            // Status indicator
-            let statusDiv = document.getElementById('canvas-status');
-            if (!statusDiv) {
-                statusDiv = document.createElement('div');
-                statusDiv.id = 'canvas-status';
-                statusDiv.style.cssText = `
-                    position: absolute;
-                    bottom: 10px;
-                    right: 10px;
-                    background: rgba(0,123,255,0.9);
-                    color: white;
-                    padding: 8px 12px;
-                    border-radius: 4px;
-                    font-size: 12px;
-                    font-weight: bold;
-                    z-index: 1000;
-                    pointer-events: none;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-                `;
-                container.appendChild(statusDiv);
-            }
-            statusDiv.textContent = 'Ready to Draw - Click and Drag!';
-
-            const ctx = canvas.getContext('2d');
-            let isDrawing = false;
-            let startX, startY;
-            let rectangles = [];
-
-            // Helper to get precise coordinates relative to canvas
-            function getCoordinates(e) {
-                const rect = canvas.getBoundingClientRect();
-                const scaleX = canvas.width / rect.width;
-                const scaleY = canvas.height / rect.height;
-                
-                // Handle both mouse and touch events
-                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-
-                return {
-                    x: (clientX - rect.left) * scaleX,
-                    y: (clientY - rect.top) * scaleY
-                };
-            }
-
-            function redraw() {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                
-                // Draw existing rectangles
-                rectangles.forEach((r, i) => {
-                    ctx.strokeStyle = '#007bff';
-                    ctx.lineWidth = 3;
-                    ctx.strokeRect(r.x, r.y, r.width, r.height);
-                    
-                    // Add label
-                    ctx.fillStyle = '#007bff';
-                    ctx.fillRect(r.x, r.y - 20, 24, 20);
-                    ctx.fillStyle = 'white';
-                    ctx.font = '12px Arial';
-                    ctx.fillText(i + 1, r.x + 8, r.y - 5);
-                });
-            }
-
-            function startDrawing(e) {
-                e.preventDefault();
-                e.stopPropagation(); // Stop event bubbling
-                
-                isDrawing = true;
-                const coords = getCoordinates(e);
-                startX = coords.x;
-                startY = coords.y;
-                
-                statusDiv.textContent = 'Drawing... Release to Finish';
-                statusDiv.style.background = 'rgba(40, 167, 69, 0.9)';
-                console.log('Draw start:', startX, startY);
-            }
-
-            function draw(e) {
-                if (!isDrawing) return;
-                e.preventDefault();
-                e.stopPropagation();
-
-                const coords = getCoordinates(e);
-                
-                redraw(); // Clear and redraw saved rectangles
-
-                // Draw current selection
-                const width = coords.x - startX;
-                const height = coords.y - startY;
-                
-                ctx.strokeStyle = '#28a745';
-                ctx.lineWidth = 3;
-                ctx.setLineDash([5, 5]); // Dashed line for current drawing
-                ctx.strokeRect(startX, startY, width, height);
-                ctx.setLineDash([]); // Reset dash
-            }
-
-            function stopDrawing(e) {
-                if (!isDrawing) return;
-                e.preventDefault();
-                e.stopPropagation();
-                
-                isDrawing = false;
-                
-                // For touch events, we might need to use the last known position
-                // But for mouseup we can usually get coordinates
-                let endX, endY;
-                
-                if (e.changedTouches && e.changedTouches.length > 0) {
-                    const rect = canvas.getBoundingClientRect();
-                    const scaleX = canvas.width / rect.width;
-                    const scaleY = canvas.height / rect.height;
-                    endX = (e.changedTouches[0].clientX - rect.left) * scaleX;
-                    endY = (e.changedTouches[0].clientY - rect.top) * scaleY;
-                } else {
-                    const coords = getCoordinates(e);
-                    endX = coords.x;
-                    endY = coords.y;
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            
+            autoRefreshInterval = setInterval(() => {
+                if (isScanning || isRefreshing) {
+                    autoRefreshTimer.textContent = '';
+                    return;
                 }
-
-                const width = endX - startX;
-                const height = endY - startY;
-
-                // Normalize rectangle (handle negative width/height)
-                const finalRect = {
-                    x: width > 0 ? startX : endX,
-                    y: height > 0 ? startY : endY,
-                    width: Math.abs(width),
-                    height: Math.abs(height)
-                };
-
-                const MIN_SIZE = 12; // Minimum pixel size for a custom ROI
-                const DEFAULT_WIDTH = 150;
-                const DEFAULT_HEIGHT = 70;
-
-                // Minimum size check with fallback placement
-                if (finalRect.width >= MIN_SIZE && finalRect.height >= MIN_SIZE) {
-                    rectangles.push(finalRect);
-                    canvas.rectangles = rectangles; // Expose to parent
+                
+                autoRefreshCountdown--;
+                
+                if (autoRefreshCountdown <= 0) {
+                    autoRefreshCountdown = 30;
                     
-                    redraw();
-                    
-                    statusDiv.textContent = `✅ Saved Rectangle #${rectangles.length}`;
-                    statusDiv.style.background = 'rgba(23, 162, 184, 0.9)';
-                    
-                    // Show preview of what was just drawn
-                    showCropPreview(finalRect);
-                    
-                    console.log('Rectangle saved:', finalRect);
-                } else {
-                    // Auto-create a default ROI centered around the click point
-                    const centerX = (startX + endX) / 2;
-                    const centerY = (startY + endY) / 2;
-
-                    const defaultRect = {
-                        x: Math.max(0, Math.min(centerX - DEFAULT_WIDTH / 2, canvas.width - DEFAULT_WIDTH)),
-                        y: Math.max(0, Math.min(centerY - DEFAULT_HEIGHT / 2, canvas.height - DEFAULT_HEIGHT)),
-                        width: DEFAULT_WIDTH,
-                        height: DEFAULT_HEIGHT
-                    };
-
-                    rectangles.push(defaultRect);
-                    canvas.rectangles = rectangles;
-                    redraw();
-
-                    statusDiv.textContent = `ℹ️ Small drag detected. Placed default ROI (#${rectangles.length}).`;
-                    statusDiv.style.background = 'rgba(255, 193, 7, 0.9)';
-
-                    showCropPreview(defaultRect);
-                    console.log('Auto-generated default rectangle:', defaultRect);
-                }
-            }
-
-            // Remove old listeners to prevent duplicates
-            const newCanvas = canvas.cloneNode(true);
-            canvas.parentNode.replaceChild(newCanvas, canvas);
-            
-            // Re-assign context and properties
-            const newCtx = newCanvas.getContext('2d');
-            newCanvas.rectangles = rectangles; // Restore rectangles array
-            
-            // Add listeners to new canvas
-            newCanvas.addEventListener('mousedown', startDrawing);
-            newCanvas.addEventListener('mousemove', draw);
-            newCanvas.addEventListener('mouseup', stopDrawing);
-            newCanvas.addEventListener('mouseout', stopDrawing);
-            
-            // Touch support
-            newCanvas.addEventListener('touchstart', startDrawing);
-            newCanvas.addEventListener('touchmove', draw);
-            newCanvas.addEventListener('touchend', stopDrawing);
-
-            console.log('✅ Canvas event listeners attached');
-        }
-
-        // Save training data
-        async function saveTrainingData(data) {
-            const canvas = document.querySelector('#training-canvas');
-            const rectangles = canvas.rectangles || [];
-
-            if (rectangles.length === 0) {
-                showNotification('Please draw at least one rectangle around the elements to detect.', 'warning');
-                return;
-            }
-
-            const statusDiv = document.querySelector('#training-status');
-            statusDiv.textContent = 'Saving training data...';
-            statusDiv.style.color = '#007bff';
-
-            try {
-                // Determine content type based on user selection or automatic logic
-                // For manual training, we'll ask the user to categorize each rectangle
-                // This is a simplified version - in a full implementation we'd have a UI for this
-
-                for (let i = 0; i < rectangles.length; i++) {
-                    const rect = rectangles[i];
-
-                    // Scale coordinates to original image size
-                    const img = document.querySelector('#training-image');
-                    const scaleX = data.dimensions.width / img.offsetWidth;
-                    const scaleY = data.dimensions.height / img.offsetHeight;
-
-                    const scaledRect = {
-                        x: Math.round(rect.x * scaleX),
-                        y: Math.round(rect.y * scaleY),
-                        width: Math.round(rect.width * scaleX),
-                        height: Math.round(rect.height * scaleY)
-                    };
-
-                    // Ask user what this rectangle represents
-                    // For batch training we might automate this, but for manual training user input is best
-                    let contentType = 'head'; // Default
-                    if (!TrainingState.isBatchTraining) {
-                        // Simple heuristic: if it's near the top right, it might be kills/squads
-                        // But let's ask the user via a simple prompt for now to enable the feature
-                        const type = prompt(`Rectangle ${i+1}: What is this?\n\n1. Kills Counter (Top Right)\n2. Squads Counter (Top Right)\n3. Head Icon (Visual)\n\nEnter 1, 2, or 3:`, "3");
-                        
-                        if (type === "1") {
-                            contentType = 'kills_roi';
-                            // Also update the global ROI for kills
-                            await updateGlobalROI('kills', scaledRect, data.dimensions.width, data.dimensions.height);
-                        } else if (type === "2") {
-                            contentType = 'squads_roi';
-                            // Also update the global ROI for squads
-                            await updateGlobalROI('squads', scaledRect, data.dimensions.width, data.dimensions.height);
-                        } else {
-                            contentType = 'head';
-                        }
+                    // Auto-refresh if we have streams
+                    const currentStreams = streamsTable.querySelectorAll('tr:not(#no-results-row)').length;
+                    if (currentStreams > 0 && isConnected) {
+                        refreshStreams();
                     }
-
-                    await saveTemplate(contentType, data.username, data.timestamp, scaledRect);
                 }
-
-                statusDiv.textContent = 'Training data saved successfully! The scanner will now use this for detection.';
-                statusDiv.style.color = '#28a745';
-
-                setTimeout(() => {
-                    closeTrainingModal();
-                    showNotification('Training complete! ROI positions updated and templates saved.', 'success');
-                    // Refresh ROI display on main page
-                    loadCustomROIs();
-                }, 2000);
-
-            } catch (error) {
-                console.error('Failed to save training data:', error);
-                statusDiv.textContent = `Error saving training data: ${error.message}`;
-                statusDiv.style.color = '#dc3545';
-            }
-        }
-
-        // Update global ROI based on training selection
-        async function updateGlobalROI(type, rect, imgWidth, imgHeight) {
-            // Convert pixel coordinates to relative (0-1) coordinates
-            const relativeROI = {
-                x: rect.x / imgWidth,
-                y: rect.y / imgHeight,
-                width: rect.width / imgWidth,
-                height: rect.height / imgHeight
-            };
-
-            // Update local state
-            if (type === 'kills') {
-                customROIs.kills = relativeROI;
-            } else if (type === 'squads') {
-                customROIs.squads = relativeROI;
-            }
-
-            // Save to localStorage
-            localStorage.setItem('apexScannerCustomROIs', JSON.stringify(customROIs));
-            
-            // Also send to server to persist for OCR
-            try {
-                await fetch('/save-roi-positions', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        kills_roi: customROIs.kills,
-                        squads_roi: customROIs.squads
-                    })
-                });
-                console.log(`✅ Updated ${type} ROI from training`);
-            } catch (e) {
-                console.error(`Failed to update ${type} ROI on server:`, e);
-            }
-        }
-
-        // Save template to server
-        async function saveTemplate(type, username, timestamp, rect) {
-            const response = await fetch('/save-template', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    username: username,
-                    timestamp: timestamp,
-                    type: type,
-                    x: rect.x,
-                    y: rect.y,
-                    width: rect.width,
-                    height: rect.height
-                })
-            });
-
-            const data = await response.json();
-            if (!data.success) {
-                throw new Error(data.error || 'Failed to save template');
-            }
-        }
-
-        // Show cropped preview of selected rectangle
-        function showCropPreview(rect) {
-            const img = document.querySelector('#training-image');
-            const previewContainer = document.querySelector('#preview-container');
-            const cropPreview = document.querySelector('#crop-preview');
-            const previewImage = document.querySelector('#preview-image');
-            const cropDimensions = document.querySelector('#crop-dimensions');
-
-            if (!img || !rect) return;
-
-            // Calculate scaling factor between displayed image and actual image
-            const displayedWidth = img.offsetWidth;
-            const displayedHeight = img.offsetHeight;
-            const naturalWidth = img.naturalWidth;
-            const naturalHeight = img.naturalHeight;
-
-            const scaleX = naturalWidth / displayedWidth;
-            const scaleY = naturalHeight / displayedHeight;
-
-            console.log(`🔍 Image scaling: ${displayedWidth}x${displayedHeight} displayed, ${naturalWidth}x${naturalHeight} natural`);
-            console.log(`📐 Scale factors: ${scaleX.toFixed(2)} x ${scaleY.toFixed(2)}`);
-
-            // Scale rectangle coordinates to match actual image dimensions
-            const scaledRect = {
-                x: Math.round(rect.x * scaleX),
-                y: Math.round(rect.y * scaleY),
-                width: Math.round(rect.width * scaleX),
-                height: Math.round(rect.height * scaleY)
-            };
-
-            console.log(`🎯 Original rect: (${rect.x}, ${rect.y}) ${rect.width}x${rect.height}`);
-            console.log(`🔄 Scaled rect: (${scaledRect.x}, ${scaledRect.y}) ${scaledRect.width}x${scaledRect.height}`);
-
-            // Create a canvas to crop the image
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-
-            // Set canvas size to the cropped area (use scaled dimensions for better quality)
-            canvas.width = scaledRect.width;
-            canvas.height = scaledRect.height;
-
-            // Draw the cropped portion of the original image using scaled coordinates
-            ctx.drawImage(
-                img,
-                scaledRect.x, scaledRect.y, scaledRect.width, scaledRect.height,  // Source rectangle (scaled)
-                0, 0, scaledRect.width, scaledRect.height                       // Destination on canvas
-            );
-
-            // Convert canvas to data URL for display
-            const croppedDataUrl = canvas.toDataURL('image/png');
-
-            // Update preview container
-            previewContainer.innerHTML = '<p style="color: #28a745; font-weight: bold;">✅ Rectangle captured!</p>';
-
-            // Show crop preview section
-            cropPreview.style.display = 'block';
-            previewImage.src = croppedDataUrl;
-            cropDimensions.textContent = `${scaledRect.width} × ${scaledRect.height} pixels (scaled from ${rect.width} × ${rect.height})`;
-
-            console.log(`📸 Crop preview created: ${scaledRect.width}×${scaledRect.height} pixels (scaled)`);
-        }
-
-        // Close training modal
-        function closeTrainingModal() {
-            const modal = document.getElementById('training-modal');
-            if (modal) {
-                modal.remove();
-            }
-            TrainingState.isTraining = false;
-            TrainingState.currentScreenshot = null;
-            TrainingState.currentUsername = null;
-            TrainingState.currentTimestamp = null;
-        }
-
-        // Start batch training wizard
-        async function startBatchTraining() {
-            if (TrainingState.isBatchTraining) {
-                showNotification('Batch training already in progress', 'warning');
-                return;
-            }
-
-            // Get training parameters
-            const numStreams = prompt('How many streams to train on? (5-15)', '10');
-            if (!numStreams || isNaN(numStreams) || numStreams < 5 || numStreams > 15) {
-                showNotification('Please enter a number between 5 and 15', 'warning');
-                return;
-            }
-
-            const focus = confirm('Include both squads and kills training? (OK = both, Cancel = kills only)') ? 'both' : 'kills';
-
-            TrainingState.isBatchTraining = true;
-            TrainingState.currentStreamIndex = 0;
-            TrainingState.totalTemplatesSaved = 0;
-
-            try {
-                showNotification(`Starting batch training on ${numStreams} streams...`, 'info');
-
-                const response = await fetch('/batch-training', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        num_streams: parseInt(numStreams),
-                        focus: focus
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-
-                TrainingState.batchStreams = data.training_streams;
-
-                // Start the wizard with the first stream
-                showBatchTrainingWizard(data.training_streams[0], 0, data.training_streams.length);
-
-            } catch (error) {
-                console.error('Batch training setup failed:', error);
-                showNotification(`Failed to start batch training: ${error.message}`, 'error');
-                TrainingState.isBatchTraining = false;
-            }
-        }
-
-        // Show batch training wizard interface
-        function showBatchTrainingWizard(streamData, currentIndex, totalStreams) {
-            const progressPercent = Math.round(((currentIndex) / totalStreams) * 100);
-
-            // Create modal overlay
-            const modal = document.createElement('div');
-            modal.id = 'training-modal';
-            modal.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0,0,0,0.8);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                z-index: 10000;
-            `;
-
-            modal.innerHTML = `
-                <div style="background: white; padding: 30px; border-radius: 12px; max-width: 900px; width: 90%; max-height: 90vh; overflow-y: auto;">
-                    <h2 style="margin-top: 0; color: #2c3e50;">🎯 Advanced Training Wizard</h2>
-
-                    <div style="margin-bottom: 20px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <span><strong>Stream ${currentIndex + 1} of ${totalStreams}</strong></span>
-                            <span><strong>${streamData.username}</strong> (${streamData.viewers} viewers)</span>
-                        </div>
-                        <div style="width: 100%; background: #e9ecef; border-radius: 10px; height: 8px;">
-                            <div style="width: ${progressPercent}%; background: linear-gradient(90deg, #17a2b8, #138496); border-radius: 10px; height: 100%; transition: width 0.3s ease;"></div>
-                        </div>
-                        <div style="text-align: center; margin-top: 5px; font-size: 0.9em; color: #666;">
-                            ${TrainingState.totalTemplatesSaved} templates saved so far
-                        </div>
-                    </div>
-
-                    <p><strong>Instructions:</strong> Draw rectangles around the HUD elements you want the scanner to detect:</p>
-                    <ul style="margin-bottom: 20px;">
-                        <li><strong>Squads text:</strong> Draw a box around "X squads left" or similar text</li>
-                        <li><strong>Head icons:</strong> Draw boxes around kill count head silhouettes</li>
-                        <li><strong>Skip if unclear:</strong> Use the Skip button for streams with poor HUD visibility</li>
-                    </ul>
-
-                    <div id="stream-loading" style="text-align: center; padding: 40px;">
-                        <div class="loading" style="width: 40px; height: 40px;"></div>
-                        <p style="margin-top: 20px;">Capturing screenshot from ${streamData.username}'s stream...</p>
-                    </div>
-
-                    <div id="training-content" style="display: none;">
-                        <div style="display: flex; gap: 20px; align-items: flex-start;">
-                            <!-- Main drawing area -->
-                            <div style="flex: 1;">
-                                <div id="drawing-container" style="position: relative; margin: 20px 0; border: 2px solid #dee2e6; border-radius: 8px; display: inline-block; background: #f8f9fa;">
-                                    <div id="drawing-instructions" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 1000; pointer-events: none;">
-                                        Click and drag to draw rectangles around HUD elements
-                                    </div>
-                                    <img id="training-image" alt="Stream screenshot for training" style="max-width: 100%; height: auto; display: block; user-select: none; -webkit-user-drag: none;" crossorigin="anonymous">
-                                    <canvas id="training-canvas" style="position: absolute; top: 0; left: 0; pointer-events: auto; cursor: crosshair; z-index: 50;"></canvas>
-                                </div>
-                            </div>
-
-                            <!-- Preview area -->
-                            <div style="flex: 0 0 300px;">
-                                <h4 style="margin-top: 20px; color: #2c3e50;">Rectangle Preview</h4>
-                                <div id="preview-container" style="border: 2px solid #28a745; border-radius: 8px; padding: 10px; background: #f8f9fa; min-height: 200px; display: flex; align-items: center; justify-content: center;">
-                                    <p style="color: #6c757d; text-align: center; margin: 0;">
-                                        Draw a rectangle on the image to see a preview of the cropped area here.
-                                    </p>
-                                </div>
-                                <div id="crop-preview" style="margin-top: 10px; display: none;">
-                                    <p style="font-size: 12px; color: #495057; margin: 5px 0;">
-                                        <strong>Crop dimensions:</strong> <span id="crop-dimensions">-</span>
-                                    </p>
-                                    <img id="preview-image" style="max-width: 100%; border: 1px solid #dee2e6; border-radius: 4px;" alt="Cropped preview">
-                                </div>
-                            </div>
-                        </div>
-
-                        <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
-                            <button id="save-next-btn" class="scan-btn" style="flex: 1; min-width: 120px;">Save & Next Stream</button>
-                            <button id="skip-stream-btn" class="scan-btn secondary" style="flex: 1; min-width: 120px;">Skip This Stream</button>
-                            <button id="not-gameplay-btn" class="scan-btn" style="background: linear-gradient(135deg, #fd7e14 0%, #dc3545 100%); flex: 1; min-width: 120px;">Not Gameplay</button>
-                            <button id="finish-training-btn" class="scan-btn" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); flex: 1; min-width: 120px;">Finish Training</button>
-                        </div>
-                    </div>
-
-                    <div id="training-status" style="margin-top: 15px; font-weight: bold;"></div>
-                </div>
-            `;
-
-            document.body.appendChild(modal);
-
-            // Capture screenshot for this stream
-            captureStreamScreenshot(streamData.username, modal);
-
-            // Setup buttons
-            modal.querySelector('#save-next-btn').onclick = () => saveAndContinue(modal, currentIndex, totalStreams);
-            modal.querySelector('#skip-stream-btn').onclick = () => skipAndContinue(modal, currentIndex, totalStreams);
-            modal.querySelector('#not-gameplay-btn').onclick = () => notGameplayAndContinue(modal, currentIndex, totalStreams);
-            modal.querySelector('#finish-training-btn').onclick = () => finishBatchTraining(modal);
-
-            // Close on escape key
-            document.addEventListener('keydown', function closeOnEscape(e) {
-                if (e.key === 'Escape') {
-                    finishBatchTraining(modal);
-                    document.removeEventListener('keydown', closeOnEscape);
-                }
-            });
-        }
-
-        // Capture screenshot for batch training
-        async function captureStreamScreenshot(username, modal) {
-            try {
-                const response = await fetch(`/capture-screenshot/${encodeURIComponent(username)}`);
-                const data = await response.json();
-
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-
-                // Update modal with screenshot
-                const loadingDiv = modal.querySelector('#stream-loading');
-                const contentDiv = modal.querySelector('#training-content');
-                const img = modal.querySelector('#training-image');
-                const canvas = modal.querySelector('#training-canvas');
-
-                img.src = data.screenshot;
-                TrainingState.currentScreenshot = data.screenshot;
-                TrainingState.currentUsername = data.username;
-                TrainingState.currentTimestamp = data.timestamp;
-
-                img.onload = () => {
-                    console.log('Image loaded, setting up canvas...');
-                    canvas.width = img.offsetWidth;
-                    canvas.height = img.offsetHeight;
-                    canvas.style.width = img.offsetWidth + 'px';
-                    canvas.style.height = img.offsetHeight + 'px';
-                    setupCanvasDrawing(canvas, img);
-
-                    loadingDiv.style.display = 'none';
-                    contentDiv.style.display = 'block';
-                    console.log('Canvas setup complete, should be interactive now');
-                };
-
-            } catch (error) {
-                console.error('Screenshot capture failed:', error);
-                const loadingDiv = modal.querySelector('#stream-loading');
-                loadingDiv.innerHTML = `
-                    <p style="color: #dc3545;">Failed to capture screenshot from ${username}'s stream.</p>
-                    <button onclick="location.reload()" class="scan-btn secondary">Retry</button>
-                `;
-            }
-        }
-
-        // Save templates and continue to next stream
-        async function saveAndContinue(modal, currentIndex, totalStreams) {
-            const canvas = modal.querySelector('#training-canvas');
-            const rectangles = canvas.rectangles || [];
-
-            if (rectangles.length === 0) {
-                showNotification('Please draw at least one rectangle around the elements to detect.', 'warning');
-                return;
-            }
-
-            const statusDiv = modal.querySelector('#training-status');
-            statusDiv.textContent = 'Saving training data...';
-            statusDiv.style.color = '#007bff';
-
-            try {
-                // Save template rectangles
-                for (let i = 0; i < rectangles.length; i++) {
-                    const rect = rectangles[i];
-
-                    // Scale coordinates to original image size
-                    const img = modal.querySelector('#training-image');
-                    // Use actual image dimensions for scaling (assuming 1920x1080 capture)
-                    const scaleX = 1920 / img.offsetWidth;
-                    const scaleY = 1080 / img.offsetHeight;
-
-                    const scaledRect = {
-                        x: Math.round(rect.x * scaleX),
-                        y: Math.round(rect.y * scaleY),
-                        width: Math.round(rect.width * scaleX),
-                        height: Math.round(rect.height * scaleY)
-                    };
-
-                    await saveTemplate('head', TrainingState.currentUsername, TrainingState.currentTimestamp, scaledRect);
-                    TrainingState.totalTemplatesSaved++;
-                }
-
-                statusDiv.textContent = `Saved ${rectangles.length} templates! Moving to next stream...`;
-                statusDiv.style.color = '#28a745';
-
-                // Move to next stream after a short delay
-                setTimeout(() => {
-                    modal.remove();
-                    const nextIndex = currentIndex + 1;
-
-                    if (nextIndex < totalStreams) {
-                        showBatchTrainingWizard(TrainingState.batchStreams[nextIndex], nextIndex, totalStreams);
-                    } else {
-                        finishBatchTraining();
-                    }
-                }, 1500);
-
-            } catch (error) {
-                console.error('Failed to save training data:', error);
-                statusDiv.textContent = `Error saving training data: ${error.message}`;
-                statusDiv.style.color = '#dc3545';
-            }
-        }
-
-        // Skip current stream and continue
-        function skipAndContinue(modal, currentIndex, totalStreams) {
-            const statusDiv = modal.querySelector('#training-status');
-            statusDiv.textContent = 'Skipping this stream...';
-            statusDiv.style.color = '#ffc107';
-
-            setTimeout(() => {
-                modal.remove();
-                const nextIndex = currentIndex + 1;
-
-                if (nextIndex < totalStreams) {
-                    showBatchTrainingWizard(TrainingState.batchStreams[nextIndex], nextIndex, totalStreams);
-                } else {
-                    finishBatchTraining();
-                }
+                
+                autoRefreshTimer.textContent = 'Auto-refresh: ' + autoRefreshCountdown + 's';
             }, 1000);
         }
 
-        // Mark as "Not Gameplay" and continue (for quality control)
-        function notGameplayAndContinue(modal, currentIndex, totalStreams) {
-            const statusDiv = modal.querySelector('#training-status');
-            statusDiv.textContent = 'Marked as "Not Gameplay" - screenshot shows loading/menu screen';
-            statusDiv.style.color = '#dc3545';
-
-            console.log(`🚫 Stream ${TrainingState.batchStreams[currentIndex].username} marked as "Not Gameplay" - no templates saved`);
-
-            setTimeout(() => {
-                modal.remove();
-                const nextIndex = currentIndex + 1;
-
-                if (nextIndex < totalStreams) {
-                    showBatchTrainingWizard(TrainingState.batchStreams[nextIndex], nextIndex, totalStreams);
-                } else {
-                    finishBatchTraining();
+        // Fetch current status on page load
+        async function updateStreamsFromStatus() {
+            try {
+                const res = await fetch('/status');
+                const data = await res.json();
+                
+                if (data.streams && data.streams.length > 0) {
+                    updateStreamsTable(data.streams);
                 }
-            }, 1500);
-        }
-
-        // Finish batch training
-        function finishBatchTraining(modal = null) {
-            if (modal) {
-                modal.remove();
+                
+                updateLastUpdated(data.last_updated);
+                setConnected(true);
+            } catch (e) {
+                setConnected(false);
             }
-
-            TrainingState.isBatchTraining = false;
-            TrainingState.batchStreams = [];
-            TrainingState.currentStreamIndex = 0;
-
-            showNotification(`Batch training complete! Saved ${TrainingState.totalTemplatesSaved} templates from ${TrainingState.batchStreams.length} streams.`, 'success');
-
-            TrainingState.totalTemplatesSaved = 0;
         }
 
-        // Initialize when DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initializeApp);
-        } else {
-            initializeApp();
-        }
+        // Initial load
+        updateStreamsFromStatus();
     </script>
 </body>
 </html>

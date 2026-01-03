@@ -35,10 +35,11 @@ print("🤖 Running with AI Vision Agent (Google Gemini Flash)")
 print(f"   Vision agent available: {vision_agent.is_available()}")
 print("💾 Memory optimizations enabled")
 
-# === MEMORY OPTIMIZATION SETTINGS ===
-MAX_STREAMS_TO_SCAN = 50  # Reduced from 100
+# === SETTINGS ===
+MAX_STREAMS_TO_PROCESS = 250  # Process 250 random streams
+SQUADS_THRESHOLD = 7  # Endgame = 7 or fewer squads
 IMAGE_QUALITY = 65  # Reduced from 85
-DELAY_BETWEEN_STREAMS = 0.5  # Seconds between each stream
+DELAY_BETWEEN_STREAMS = 0.3  # Seconds between each stream
 MAX_IMAGE_WIDTH = 640  # Downscale images for AI analysis
 
 # Global state
@@ -103,8 +104,8 @@ def get_twitch_token():
         return None
 
 
-def get_apex_streams(token, limit=MAX_STREAMS_TO_SCAN):
-    """Fetch live Apex Legends streams from Twitch"""
+def get_all_apex_streams(token):
+    """Fetch ALL live Apex Legends streams from Twitch"""
     if not token:
         return []
     
@@ -117,12 +118,15 @@ def get_apex_streams(token, limit=MAX_STREAMS_TO_SCAN):
     all_streams = []
     cursor = None
     pages = 0
+    max_pages = 20  # Safety limit (2000 streams max)
     
-    while len(all_streams) < limit and pages < 2:  # Reduced pages
+    print("📡 Fetching ALL Apex streams from Twitch...")
+    
+    while pages < max_pages:
         params = {
             "game_id": "511224",  # Apex Legends
             "type": "live",
-            "first": min(limit, 100)
+            "first": 100
         }
         if cursor:
             params["after"] = cursor
@@ -136,26 +140,29 @@ def get_apex_streams(token, limit=MAX_STREAMS_TO_SCAN):
             
             data = response.json().get("data", [])
             if not data:
+                print(f"   No more streams (page {pages + 1})")
                 break
             
             streams = [{"user_login": s["user_login"], "viewer_count": s["viewer_count"]} for s in data]
             all_streams.extend(streams)
+            print(f"   Page {pages + 1}: Got {len(data)} streams (total: {len(all_streams)})")
             
             cursor = response.json().get("pagination", {}).get("cursor")
             pages += 1
             
             if not cursor:
                 break
+                
         except Exception as e:
             print(f"API error: {e}")
             break
     
-    # Sort by viewer count (prioritize smaller streams)
-    all_streams.sort(key=lambda x: x["viewer_count"])
+    print(f"📡 Total Apex streams found: {len(all_streams)}")
+    
+    # Shuffle all streams randomly
     random.shuffle(all_streams)
     
-    print(f"📡 Found {len(all_streams)} Apex streams (limit: {limit})")
-    return all_streams[:limit]
+    return all_streams
 
 
 def downscale_image(frame, max_width=MAX_IMAGE_WIDTH):
@@ -314,8 +321,8 @@ def process_stream(stream):
             
             print(f"✅ AI detected: Squads={squads}, Players={players}, Kills={kills}")
             
-            # Check if this is a qualifying stream
-            is_endgame = squads is not None and squads <= 10
+            # Check if this is a qualifying stream (squads <= 7 for endgame)
+            is_endgame = squads is not None and squads <= SQUADS_THRESHOLD
             has_high_kills = kills is not None and kills >= 5
             has_high_damage = damage is not None and damage >= 500
             
@@ -362,7 +369,7 @@ def process_stream(stream):
 
 
 def fetch_and_update_streams():
-    """Main function to fetch and process streams - MEMORY OPTIMIZED"""
+    """Main function to fetch and process streams"""
     global qualifying_streams, last_updated, fetch_status
     
     print("\n===== Starting Stream Scan =====\n")
@@ -375,10 +382,16 @@ def fetch_and_update_streams():
         fetch_status["progress"] = "Failed to get Twitch token"
         return
     
-    fetch_status["progress"] = "Fetching Apex streams..."
-    streams = get_apex_streams(token, limit=MAX_STREAMS_TO_SCAN)
+    fetch_status["progress"] = "Fetching ALL Apex streams..."
+    all_streams = get_all_apex_streams(token)
     
-    fetch_status["total_streams"] = len(streams)
+    # Pick random subset to process
+    streams_to_process = all_streams[:MAX_STREAMS_TO_PROCESS]
+    
+    fetch_status["total_streams"] = len(streams_to_process)
+    fetch_status["progress"] = f"Processing {len(streams_to_process)} of {len(all_streams)} total streams..."
+    
+    print(f"📊 Will process {len(streams_to_process)} random streams from {len(all_streams)} total")
     
     # Clear old results
     with streams_lock:
@@ -387,7 +400,7 @@ def fetch_and_update_streams():
     cleanup_memory()
     
     completed = 0
-    for stream in streams:
+    for stream in streams_to_process:
         if fetch_status["stop_requested"]:
             print("🛑 Stop requested")
             break
@@ -395,7 +408,7 @@ def fetch_and_update_streams():
         process_stream(stream)
         completed += 1
         fetch_status["current_stream"] = completed
-        fetch_status["progress"] = f"Processed {completed}/{len(streams)} streams..."
+        fetch_status["progress"] = f"Processed {completed}/{len(streams_to_process)} streams..."
         
         # Memory cleanup between streams
         cleanup_memory()
@@ -459,7 +472,7 @@ def refresh_existing_streams():
                 kills = result.get("kills")
                 damage = result.get("damage")
                 
-                is_endgame = squads is not None and squads <= 10
+                is_endgame = squads is not None and squads <= SQUADS_THRESHOLD
                 has_high_kills = kills is not None and kills >= 5
                 has_high_damage = damage is not None and damage >= 500
                 
@@ -647,7 +660,8 @@ def health():
         "vision_agent": vision_agent.is_available(),
         "twitch_configured": bool(CLIENT_ID and CLIENT_SECRET),
         "memory_optimized": True,
-        "max_streams": MAX_STREAMS_TO_SCAN
+        "max_streams_to_process": MAX_STREAMS_TO_PROCESS,
+        "squads_threshold": SQUADS_THRESHOLD
     })
 
 
