@@ -46,6 +46,14 @@ fetch_status = {
 }
 streams_lock = threading.Lock()
 
+# Background refresh state
+refresh_status = {
+    "is_refreshing": False,
+    "last_refresh": "",
+    "streams_checked": 0,
+    "streams_removed": 0
+}
+
 # Processing details for monitoring
 processing_details = {
     "current_stream": None,
@@ -507,6 +515,121 @@ def health():
         "status": "healthy",
         "vision_agent": vision_agent.is_available(),
         "twitch_configured": bool(CLIENT_ID and CLIENT_SECRET)
+    })
+
+
+def refresh_existing_streams():
+    """Re-check existing qualifying streams to see if they're still in endgame"""
+    global qualifying_streams, refresh_status
+    
+    refresh_status["is_refreshing"] = True
+    refresh_status["streams_checked"] = 0
+    refresh_status["streams_removed"] = 0
+    
+    print("\n🔄 Refreshing existing streams...")
+    
+    with streams_lock:
+        streams_to_check = list(qualifying_streams)
+    
+    updated_streams = []
+    
+    for stream_data in streams_to_check:
+        username = stream_data["user"]
+        refresh_status["streams_checked"] += 1
+        
+        print(f"🔍 Re-checking {username}...")
+        
+        try:
+            # Quick capture and analyze
+            frame = capture_frame(username, timeout_seconds=8)
+            if frame is None:
+                print(f"  ❌ {username} - offline or capture failed, removing")
+                refresh_status["streams_removed"] += 1
+                continue
+            
+            # Analyze with AI
+            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            result = vision_agent.analyze_hud(buffer.tobytes(), username)
+            
+            if result.get("success"):
+                squads = result.get("squads")
+                kills = result.get("kills")
+                damage = result.get("damage")
+                
+                # Check if still qualifying
+                is_endgame = squads is not None and squads <= 10
+                has_high_kills = kills is not None and kills >= 5
+                has_high_damage = damage is not None and damage >= 500
+                
+                if is_endgame or has_high_kills or has_high_damage:
+                    # Update the stream data with new values
+                    stream_data["squads"] = squads
+                    stream_data["players"] = result.get("players")
+                    stream_data["kills"] = kills
+                    stream_data["assists"] = result.get("assists")
+                    stream_data["damage"] = damage
+                    updated_streams.append(stream_data)
+                    print(f"  ✅ {username} - still qualifying (squads={squads}, kills={kills})")
+                else:
+                    print(f"  ⏭️ {username} - no longer qualifying, removing")
+                    refresh_status["streams_removed"] += 1
+            else:
+                # Keep stream if AI failed (might be temporary issue)
+                updated_streams.append(stream_data)
+                print(f"  ⚠️ {username} - AI check failed, keeping stream")
+                
+        except Exception as e:
+            print(f"  ❌ Error checking {username}: {e}")
+            # Keep stream on error
+            updated_streams.append(stream_data)
+    
+    # Update the global list
+    with streams_lock:
+        qualifying_streams.clear()
+        qualifying_streams.extend(updated_streams)
+        # Re-sort
+        qualifying_streams.sort(
+            key=lambda x: (
+                x["squads"] if x["squads"] is not None else 999,
+                -(x["kills"] if x["kills"] is not None else 0)
+            )
+        )
+    
+    refresh_status["is_refreshing"] = False
+    refresh_status["last_refresh"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    
+    print(f"🔄 Refresh complete: {len(updated_streams)} streams remaining, {refresh_status['streams_removed']} removed")
+
+
+@app.route('/refresh-streams', methods=['POST'])
+def refresh_streams():
+    """Manually trigger a refresh of existing streams"""
+    global refresh_status
+    
+    if refresh_status["is_refreshing"]:
+        return jsonify({"error": "Already refreshing"}), 400
+    
+    if not qualifying_streams:
+        return jsonify({"error": "No streams to refresh"}), 400
+    
+    thread = threading.Thread(target=refresh_existing_streams)
+    thread.start()
+    
+    return jsonify({
+        "message": f"Refreshing {len(qualifying_streams)} streams...",
+        "streams_count": len(qualifying_streams)
+    })
+
+
+@app.route('/refresh-status')
+def get_refresh_status():
+    """Get the current refresh status"""
+    return jsonify({
+        "is_refreshing": refresh_status["is_refreshing"],
+        "last_refresh": refresh_status["last_refresh"],
+        "streams_checked": refresh_status["streams_checked"],
+        "streams_removed": refresh_status["streams_removed"],
+        "current_streams": len(qualifying_streams)
     })
 
 

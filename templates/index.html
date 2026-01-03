@@ -595,16 +595,21 @@
             isScanning: false,
             statusInterval: null,
             autoRefreshInterval: null,
+            streamRefreshInterval: null,
             currentFilter: 'all',
             isRequesting: false, // Prevent simultaneous requests
+            connectionLost: false,
+            reconnectAttempts: 0,
 
-            // Configuration - REDUCED POLLING TO PREVENT SERVER OVERLOAD
-            POLL_INTERVAL_ACTIVE: 3000, // 3 seconds when scanning
-            POLL_INTERVAL_IDLE: 15000, // 15 seconds when idle
-            AUTO_REFRESH_INTERVAL: 300000, // 5 minutes (reduced from 30s)
-            RETRY_ATTEMPTS: 3,
-            RETRY_DELAY: 2000, // 2 seconds
-            REQUEST_TIMEOUT: 10000, // 10 second timeout for requests
+            // Configuration
+            POLL_INTERVAL_ACTIVE: 5000, // 5 seconds when scanning (increased for stability)
+            POLL_INTERVAL_IDLE: 10000, // 10 seconds when idle
+            STREAM_REFRESH_INTERVAL: 30000, // 30 seconds to refresh existing streams
+            AUTO_REFRESH_INTERVAL: 300000, // 5 minutes
+            RETRY_ATTEMPTS: 5, // More retry attempts
+            RETRY_DELAY: 3000, // 3 seconds between retries
+            REQUEST_TIMEOUT: 15000, // 15 second timeout for requests
+            MAX_RECONNECT_ATTEMPTS: 10,
         };
 
         // DOM element cache for better performance
