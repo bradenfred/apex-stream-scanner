@@ -121,7 +121,7 @@ def get_apex_streams(token, limit=MAX_STREAMS_TO_SCAN):
     all_streams = []
     cursor = None
     pages = 0
-    max_pages = 12  # Collect up to 1200 streams for fair representation
+    max_pages = 8  # Reduced to 800 streams to prevent rate limiting
 
     print(f"📊 Collecting large pool of Apex streams (up to {max_pages * 100} streams)...")
 
@@ -135,10 +135,14 @@ def get_apex_streams(token, limit=MAX_STREAMS_TO_SCAN):
             params["after"] = cursor
 
         try:
-            response = requests.get(url, headers=headers, params=params, timeout=10)
+            response = requests.get(url, headers=headers, params=params, timeout=15)
 
-            if response.status_code != 200:
-                print(f"API error: {response.status_code}")
+            if response.status_code == 429:
+                print(f"⚠️ Rate limited! Waiting before retry...")
+                time.sleep(5)
+                continue
+            elif response.status_code != 200:
+                print(f"API error: {response.status_code} - {response.text}")
                 break
 
             data = response.json().get("data", [])
@@ -154,9 +158,15 @@ def get_apex_streams(token, limit=MAX_STREAMS_TO_SCAN):
 
             print(f"   Page {pages}: Got {len(data)} streams (total pool: {len(all_streams)})")
 
+            # Small delay between API calls to prevent rate limiting
+            time.sleep(0.5)
+
             if not cursor:
                 break
 
+        except requests.exceptions.Timeout:
+            print(f"⏰ Timeout on page {pages + 1}, stopping collection")
+            break
         except Exception as e:
             print(f"API error on page {pages + 1}: {e}")
             break
@@ -548,12 +558,30 @@ def refresh_existing_streams():
 
 # Flask Routes
 
+@app.before_request
+def handle_options():
+    """Handle CORS preflight requests"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        return response
+
+@app.after_request
+def add_cors_headers(response):
+    """Add CORS headers to all responses"""
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
+
 @app.route('/')
 def home():
     response = make_response(render_template(
-        'index.html', 
-        streams=qualifying_streams, 
-        last_updated=last_updated, 
+        'index.html',
+        streams=qualifying_streams,
+        last_updated=last_updated,
         version=int(time.time())
     ))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -576,28 +604,57 @@ def status():
 @app.route('/fetch', methods=['POST'])
 def fetch():
     global fetch_status
-    
-    if fetch_status["is_fetching"]:
-        return jsonify({"error": "Already scanning"}), 400
-    
-    if not CLIENT_ID or not CLIENT_SECRET:
-        return jsonify({"error": "Twitch credentials not configured"}), 400
-    
-    if not vision_agent.is_available():
-        return jsonify({"error": "Vision agent not configured. Set GEMINI_API_KEY."}), 400
-    
-    fetch_status = {
-        "is_fetching": True, 
-        "progress": "Starting...", 
-        "current_stream": 0, 
-        "total_streams": 0, 
-        "stop_requested": False
-    }
-    
-    thread = threading.Thread(target=fetch_and_update_streams, daemon=True)
-    thread.start()
-    
-    return jsonify({"message": "Stream scanning started"})
+
+    try:
+        print(f"🔄 Fetch request received from {request.remote_addr}")
+        print(f"   Headers: {dict(request.headers)}")
+        print(f"   Data: {request.get_data(as_text=True)}")
+
+        # Check if already scanning
+        if fetch_status["is_fetching"]:
+            print("❌ Rejecting: Already scanning")
+            return jsonify({"error": "Already scanning"}), 400
+
+        # Check Twitch credentials
+        if not CLIENT_ID or not CLIENT_SECRET:
+            print("❌ Rejecting: Twitch credentials not configured")
+            print(f"   CLIENT_ID: {'SET' if CLIENT_ID else 'MISSING'}")
+            print(f"   CLIENT_SECRET: {'SET' if CLIENT_SECRET else 'MISSING'}")
+            return jsonify({"error": "Twitch credentials not configured"}), 400
+
+        # Check Gemini API
+        if not vision_agent.is_available():
+            print("❌ Rejecting: Vision agent not configured")
+            return jsonify({"error": "Vision agent not configured. Set GEMINI_API_KEY."}), 400
+
+        print("✅ All validations passed, starting scan...")
+
+        # Reset fetch status
+        fetch_status = {
+            "is_fetching": True,
+            "progress": "Starting...",
+            "current_stream": 0,
+            "total_streams": 0,
+            "stop_requested": False
+        }
+
+        # Start the scanning thread
+        try:
+            thread = threading.Thread(target=fetch_and_update_streams, daemon=True)
+            thread.start()
+            print("✅ Scan thread started successfully")
+        except Exception as e:
+            print(f"❌ Failed to start scan thread: {e}")
+            fetch_status["is_fetching"] = False
+            return jsonify({"error": f"Failed to start scanning: {str(e)}"}), 500
+
+        return jsonify({"message": "Stream scanning started"})
+
+    except Exception as e:
+        print(f"❌ Unexpected error in fetch endpoint: {e}")
+        import traceback
+        print(f"   Traceback: {traceback.format_exc()}")
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 
 @app.route('/stop-fetch', methods=['POST'])
@@ -688,8 +745,17 @@ def health():
         "vision_agent": vision_agent.is_available(),
         "twitch_configured": bool(CLIENT_ID and CLIENT_SECRET),
         "memory_optimized": True,
-        "max_streams": MAX_STREAMS_TO_SCAN
+        "max_streams": MAX_STREAMS_TO_SCAN,
+        "timestamp": int(time.time()),
+        "active_streams": len(qualifying_streams),
+        "is_scanning": fetch_status["is_fetching"]
     })
+
+
+@app.route('/ping')
+def ping():
+    """Simple ping endpoint for Railway health checks"""
+    return jsonify({"pong": True, "timestamp": int(time.time())})
 
 
 if __name__ == '__main__':
