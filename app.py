@@ -660,6 +660,22 @@ def home():
 @app.route('/status')
 def status():
     with streams_lock:
+        # Only log status requests when scanning or when progress changes
+        global last_logged_progress
+        if 'last_logged_progress' not in globals():
+            last_logged_progress = None
+
+        current_progress = fetch_status["progress"]
+        should_log = (
+            fetch_status["is_fetching"] or  # Always log when scanning
+            current_progress != last_logged_progress or  # Log when progress changes
+            last_logged_progress is None  # Log first request
+        )
+
+        if should_log:
+            print(f"📊 Status requested: {current_progress}")
+            last_logged_progress = current_progress
+
         return jsonify({
             "streams": qualifying_streams,
             "last_updated": last_updated,

@@ -602,8 +602,8 @@
             reconnectAttempts: 0,
 
             // Configuration
-            POLL_INTERVAL_ACTIVE: 5000, // 5 seconds when scanning (increased for stability)
-            POLL_INTERVAL_IDLE: 10000, // 10 seconds when idle
+            POLL_INTERVAL_ACTIVE: 8000, // 8 seconds when scanning (reduced log noise)
+            POLL_INTERVAL_IDLE: 20000, // 20 seconds when idle (reduced log noise)
             STREAM_REFRESH_INTERVAL: 30000, // 30 seconds to refresh existing streams
             AUTO_REFRESH_INTERVAL: 300000, // 5 minutes
             RETRY_ATTEMPTS: 5, // More retry attempts
