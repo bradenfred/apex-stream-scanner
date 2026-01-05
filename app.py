@@ -370,6 +370,20 @@ def process_stream(stream):
 
             print(f"✅ AI detected: Squads={squads}, Players={players}, Kills={kills}, Ranked={is_ranked}")
 
+            # Check if AI found NO HUD elements (stream not showing gameplay)
+            all_values_none = all([
+                squads is None,
+                players is None,
+                kills is None,
+                assists is None,
+                damage is None
+            ])
+
+            if all_values_none:
+                print(f"⏭️ No HUD detected - stream not showing gameplay (menu/loading/lobby)")
+                processing_details["status"] = "no_hud"
+                return None
+
             # Only qualify RANKED games (ignore casual/arena)
             if is_ranked != True:
                 print(f"⏭️ Not ranked mode (ranked={is_ranked}) - skipping")
