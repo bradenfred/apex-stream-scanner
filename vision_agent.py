@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Gemini API configuration
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
-GEMINI_MODEL = "gemini-2.0-flash-exp"  # Fast and cheap
+GEMINI_MODEL = "gemini-2.5-flash-image"  # Higher rate limits for image analysis - UPDATED TO 2.5 FLASH IMAGE
 
 # Import Google Generative AI
 try:
@@ -33,11 +33,11 @@ def configure_gemini():
     if not GEMINI_AVAILABLE:
         logger.error("Gemini SDK not available")
         return False
-    
+
     if not GEMINI_API_KEY:
         logger.error("GEMINI_API_KEY environment variable not set")
         return False
-    
+
     genai.configure(api_key=GEMINI_API_KEY)
     return True
 
@@ -46,31 +46,31 @@ def crop_top_right_quarter(image_data: bytes) -> bytes:
     """
     Crop the top-right quarter of an image.
     This is where Apex Legends displays squads, players, and kills.
-    
+
     Args:
         image_data: Raw image bytes (JPEG/PNG)
-    
+
     Returns:
         Cropped image as bytes
     """
     try:
         img = Image.open(BytesIO(image_data))
         width, height = img.size
-        
+
         # Crop top-right quarter (right half, top half)
         left = width // 2
         top = 0
         right = width
         bottom = height // 2
-        
+
         cropped = img.crop((left, top, right, bottom))
-        
+
         # Convert back to bytes
         output = BytesIO()
         cropped.save(output, format='JPEG', quality=85)
         output.seek(0)
         return output.read()
-    
+
     except Exception as e:
         logger.error(f"Failed to crop image: {e}")
         return image_data  # Return original if cropping fails
@@ -79,11 +79,11 @@ def crop_top_right_quarter(image_data: bytes) -> bytes:
 def analyze_hud(image_data: bytes, username: str = "unknown") -> dict:
     """
     Analyze an Apex Legends HUD screenshot using Gemini Flash.
-    
+
     Args:
         image_data: Raw screenshot bytes
         username: Streamer username for logging
-    
+
     Returns:
         Dictionary with extracted stats:
         {
@@ -104,24 +104,24 @@ def analyze_hud(image_data: bytes, username: str = "unknown") -> dict:
         "raw_response": "",
         "success": False
     }
-    
+
     if not configure_gemini():
         result["raw_response"] = "Gemini API not configured"
         return result
-    
+
     try:
         # Crop to top-right quarter where HUD is located
         cropped_data = crop_top_right_quarter(image_data)
-        
+
         # Create the model
         model = genai.GenerativeModel(GEMINI_MODEL)
-        
+
         # Create image part for the API
         image_part = {
             "mime_type": "image/jpeg",
             "data": base64.b64encode(cropped_data).decode('utf-8')
         }
-        
+
         # Prompt optimized for Apex Legends HUD extraction with ranked mode detection
         prompt = """Analyze this Apex Legends game screenshot and extract the following information from the HUD.
 
@@ -150,32 +150,32 @@ If this is not gameplay (loading screen, menu, lobby, etc.), return all nulls.""
 
         # Call Gemini API
         response = model.generate_content([prompt, image_part])
-        
+
         raw_text = response.text.strip()
         result["raw_response"] = raw_text
-        
+
         logger.info(f"[{username}] Gemini response: {raw_text}")
-        
+
         # Parse the JSON response
         # Try to extract JSON from the response (handle markdown code blocks)
         json_match = re.search(r'\{[^}]+\}', raw_text)
         if json_match:
             json_str = json_match.group()
             parsed = json.loads(json_str)
-            
+
             # Extract values
             if "squads" in parsed and parsed["squads"] is not None:
                 result["squads"] = int(parsed["squads"])
-            
+
             if "players" in parsed and parsed["players"] is not None:
                 result["players"] = int(parsed["players"])
-            
+
             if "kills" in parsed and parsed["kills"] is not None:
                 result["kills"] = int(parsed["kills"])
-            
+
             if "assists" in parsed and parsed["assists"] is not None:
                 result["assists"] = int(parsed["assists"])
-            
+
             if "damage" in parsed and parsed["damage"] is not None:
                 result["damage"] = int(parsed["damage"])
 
@@ -187,17 +187,17 @@ If this is not gameplay (loading screen, menu, lobby, etc.), return all nulls.""
                 result["players"] is not None,
                 result["kills"] is not None
             ])
-        
+
         logger.info(f"[{username}] Extracted: squads={result['squads']}, players={result['players']}, kills={result['kills']}, assists={result['assists']}, damage={result['damage']}, is_ranked={result['is_ranked']}")
-        
+
     except json.JSONDecodeError as e:
         logger.error(f"[{username}] Failed to parse Gemini JSON response: {e}")
         result["raw_response"] = f"JSON parse error: {e}"
-    
+
     except Exception as e:
         logger.error(f"[{username}] Gemini API error: {e}")
         result["raw_response"] = f"API error: {e}"
-    
+
     return result
 
 
