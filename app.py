@@ -311,14 +311,21 @@ def process_stream(stream):
             kills = result.get("kills")
             assists = result.get("assists")
             damage = result.get("damage")
-            
-            print(f"✅ AI detected: Squads={squads}, Players={players}, Kills={kills}")
-            
+            is_ranked = result.get("is_ranked")
+
+            print(f"✅ AI detected: Squads={squads}, Players={players}, Kills={kills}, Ranked={is_ranked}")
+
+            # Only qualify RANKED games (ignore casual/arena)
+            if is_ranked != True:
+                print(f"⏭️ Not ranked mode (ranked={is_ranked}) - skipping")
+                processing_details["status"] = "not_ranked"
+                return None
+
             # Check if this is a qualifying stream
             is_endgame = squads is not None and squads <= 10
             has_high_kills = kills is not None and kills >= 5
             has_high_damage = damage is not None and damage >= 500
-            
+
             if is_endgame or has_high_kills or has_high_damage:
                 processing_details["status"] = "completed"
                 
@@ -458,11 +465,18 @@ def refresh_existing_streams():
                 squads = result.get("squads")
                 kills = result.get("kills")
                 damage = result.get("damage")
-                
+                is_ranked = result.get("is_ranked")
+
+                # Only keep RANKED games during refresh
+                if is_ranked != True:
+                    print(f"  ⏭️ {username} - no longer ranked, removing")
+                    refresh_status["streams_removed"] += 1
+                    continue
+
                 is_endgame = squads is not None and squads <= 10
                 has_high_kills = kills is not None and kills >= 5
                 has_high_damage = damage is not None and damage >= 500
-                
+
                 if is_endgame or has_high_kills or has_high_damage:
                     stream_data["squads"] = squads
                     stream_data["players"] = result.get("players")

@@ -100,6 +100,7 @@ def analyze_hud(image_data: bytes, username: str = "unknown") -> dict:
         "kills": None,
         "assists": None,
         "damage": None,
+        "is_ranked": None,  # True if ranked mode, False if casual, None if unknown
         "raw_response": "",
         "success": False
     }
@@ -121,8 +122,12 @@ def analyze_hud(image_data: bytes, username: str = "unknown") -> dict:
             "data": base64.b64encode(cropped_data).decode('utf-8')
         }
         
-        # Prompt optimized for Apex Legends HUD extraction
+        # Prompt optimized for Apex Legends HUD extraction with ranked mode detection
         prompt = """Analyze this Apex Legends game screenshot and extract the following information from the HUD.
+
+Look for game mode indicators:
+- RANKED MODE: Look for "RANKED" text, crown/star icons, tier names (Bronze, Silver, Gold, Platinum, Diamond, Master, Apex Predator), or RP (ranked points) display
+- CASUAL MODE: Look for "CASUAL" text or arena mode indicators
 
 The Apex HUD typically shows in the top area:
 - "X SQUADS LEFT" text with a player count number next to it
@@ -135,11 +140,12 @@ Extract these values:
 3. KILLS: The number next to the skull icon (usually 0-30+)
 4. ASSISTS: The number of assists (optional)
 5. DAMAGE: The damage number (usually 0-3000+)
+6. IS_RANKED: true if this is ranked mode, false if casual/arena, null if unknown
 
 Return ONLY a JSON object in this exact format, nothing else:
-{"squads": NUMBER_OR_NULL, "players": NUMBER_OR_NULL, "kills": NUMBER_OR_NULL, "assists": NUMBER_OR_NULL, "damage": NUMBER_OR_NULL}
+{"squads": NUMBER_OR_NULL, "players": NUMBER_OR_NULL, "kills": NUMBER_OR_NULL, "assists": NUMBER_OR_NULL, "damage": NUMBER_OR_NULL, "is_ranked": BOOLEAN_OR_NULL}
 
-If you cannot find a value, use null. Only use integers for found values.
+If you cannot find a value, use null. Only use integers for numeric values, booleans for is_ranked.
 If this is not gameplay (loading screen, menu, lobby, etc.), return all nulls."""
 
         # Call Gemini API
@@ -172,14 +178,17 @@ If this is not gameplay (loading screen, menu, lobby, etc.), return all nulls.""
             
             if "damage" in parsed and parsed["damage"] is not None:
                 result["damage"] = int(parsed["damage"])
-            
+
+            if "is_ranked" in parsed and parsed["is_ranked"] is not None:
+                result["is_ranked"] = bool(parsed["is_ranked"])
+
             result["success"] = any([
                 result["squads"] is not None,
                 result["players"] is not None,
                 result["kills"] is not None
             ])
         
-        logger.info(f"[{username}] Extracted: squads={result['squads']}, players={result['players']}, kills={result['kills']}, assists={result['assists']}, damage={result['damage']}")
+        logger.info(f"[{username}] Extracted: squads={result['squads']}, players={result['players']}, kills={result['kills']}, assists={result['assists']}, damage={result['damage']}, is_ranked={result['is_ranked']}")
         
     except json.JSONDecodeError as e:
         logger.error(f"[{username}] Failed to parse Gemini JSON response: {e}")
