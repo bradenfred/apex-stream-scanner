@@ -827,6 +827,26 @@ def ping():
     return jsonify({"pong": True, "timestamp": int(time.time())})
 
 
+@app.route('/ocr-stats')
+def ocr_stats():
+    """OCR learning statistics endpoint"""
+    # Return mock stats for now - in a real implementation this would track
+    # OCR success rates, best preprocessing methods, etc.
+    return jsonify({
+        "ocr_learning_stats": {
+            "total_detections": len(qualifying_streams) * 3,  # Rough estimate
+            "success_rate": 0.85,  # 85% success rate
+            "best_variants": [
+                ["default", 0.88, 45],
+                ["enhanced_contrast", 0.82, 38],
+                ["noise_reduction", 0.79, 32]
+            ]
+        },
+        "streams_analyzed": len(qualifying_streams),
+        "last_updated": last_updated
+    })
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('DEBUG', 'false').lower() == 'true'
