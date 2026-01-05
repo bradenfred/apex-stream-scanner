@@ -310,10 +310,12 @@ def analyze_stream_with_ai(frame, username):
 def process_stream(stream):
     """Process a single stream with AI vision - MEMORY OPTIMIZED"""
     global processing_details
-    
+
     username = stream["user_login"]
-    print(f"\n----- Processing: {username} -----")
-    
+    stream_start = time.time()
+
+    print(f"\n----- Processing: {username} (stream #{fetch_status['current_stream'] + 1}) -----")
+
     # Minimal monitoring update
     processing_details["current_stream"] = {
         "username": username,
@@ -321,27 +323,43 @@ def process_stream(stream):
     }
     processing_details["status"] = "processing"
     processing_details["screenshot"] = None  # Clear old screenshot
-    
-    start_time = time.time()
+
     frame = None
-    
+
     try:
+        # Check if we should stop
+        if fetch_status.get("stop_requested", False):
+            print(f"🛑 Stop requested, aborting {username}")
+            processing_details["status"] = "stopped"
+            return None
+
+        print(f"📸 Starting frame capture for {username}...")
+        capture_start = time.time()
+
         # Capture frame
         frame = capture_frame(username)
         if frame is None:
             processing_details["status"] = "failed"
+            print(f"❌ Frame capture failed for {username}")
             return None
-        
-        print(f"✅ Frame captured in {time.time() - start_time:.1f}s")
-        
+
+        capture_time = time.time() - capture_start
+        print(f"✅ Frame captured in {capture_time:.1f}s")
+
         # Analyze with AI (uses downscaled image internally)
+        print(f"🤖 Starting AI analysis for {username}...")
+        ai_start = time.time()
+
         result = analyze_stream_with_ai(frame, username)
-        
+
+        ai_time = time.time() - ai_start
+        print(f"✅ AI analysis completed in {ai_time:.1f}s")
+
         # Clear frame immediately after analysis
         del frame
         frame = None
         cleanup_memory()
-        
+
         if result.get("success"):
             squads = result.get("squads")
             players = result.get("players")
@@ -365,7 +383,7 @@ def process_stream(stream):
 
             if is_endgame or has_high_kills or has_high_damage:
                 processing_details["status"] = "completed"
-                
+
                 stream_data = {
                     "user": username,
                     "squads": squads,
@@ -377,7 +395,7 @@ def process_stream(stream):
                     "viewers": stream["viewer_count"],
                     "last_checked": time.strftime("%H:%M:%S")
                 }
-                
+
                 # Add to results
                 with streams_lock:
                     qualifying_streams.append(stream_data)
@@ -387,76 +405,113 @@ def process_stream(stream):
                             -(x["kills"] if x["kills"] is not None else 0)
                         )
                     )
-                
-                print(f"🎯 QUALIFYING STREAM: Added to results")
+
+                total_time = time.time() - stream_start
+                print(f"🎯 QUALIFYING STREAM: Added to results (total time: {total_time:.1f}s)")
                 return stream_data
             else:
                 print(f"⏭️ Not qualifying (squads={squads}, kills={kills})")
+                processing_details["status"] = "no_content"
+                return None
         else:
-            print(f"❌ AI analysis failed")
-        
-        processing_details["status"] = "no_content"
+            print(f"❌ AI analysis failed for {username}")
+            processing_details["status"] = "failed"
+            return None
+
+    except Exception as e:
+        print(f"💥 CRITICAL ERROR processing {username}: {e}")
+        import traceback
+        print(f"   Traceback: {traceback.format_exc()}")
+        processing_details["status"] = "error"
         return None
-        
+
     finally:
         # Ensure frame is cleaned up
         if frame is not None:
             del frame
         cleanup_memory()
 
+        total_time = time.time() - stream_start
+        print(f"🏁 Finished processing {username} in {total_time:.1f}s")
+
 
 def fetch_and_update_streams():
     """Main function to fetch and process streams - MEMORY OPTIMIZED"""
     global qualifying_streams, last_updated, fetch_status
-    
+
+    scan_start_time = time.time()
+    MAX_SCAN_TIME = 600  # 10 minutes max to prevent Railway timeouts
+
     print("\n===== Starting Stream Scan =====\n")
-    
+
     fetch_status["progress"] = "Getting Twitch token..."
     token = get_twitch_token()
-    
+
     if not token:
         fetch_status["is_fetching"] = False
         fetch_status["progress"] = "Failed to get Twitch token"
         return
-    
+
     fetch_status["progress"] = "Fetching Apex streams..."
     streams = get_apex_streams(token, limit=MAX_STREAMS_TO_SCAN)
-    
+
     fetch_status["total_streams"] = len(streams)
-    
+
     # Clear old results
     with streams_lock:
         qualifying_streams.clear()
-    
+
     cleanup_memory()
-    
+
     completed = 0
     for stream in streams:
+        # Check for timeout
+        elapsed_time = time.time() - scan_start_time
+        if elapsed_time > MAX_SCAN_TIME:
+            print(f"⏰ Scan timeout reached ({MAX_SCAN_TIME}s), stopping...")
+            fetch_status["progress"] = f"Timeout! Processed {completed}/{len(streams)} streams..."
+            break
+
         if fetch_status["stop_requested"]:
             print("🛑 Stop requested")
             break
-        
+
+        stream_start = time.time()
         process_stream(stream)
+        stream_time = time.time() - stream_start
+
         completed += 1
         fetch_status["current_stream"] = completed
-        fetch_status["progress"] = f"Processed {completed}/{len(streams)} streams..."
-        
+
+        # Estimate remaining time
+        if completed > 0:
+            avg_time_per_stream = elapsed_time / completed
+            remaining_streams = len(streams) - completed
+            estimated_remaining = remaining_streams * avg_time_per_stream
+            fetch_status["progress"] = f"Processed {completed}/{len(streams)} streams... (~{estimated_remaining:.0f}s left)"
+        else:
+            fetch_status["progress"] = f"Processed {completed}/{len(streams)} streams..."
+
+        print(f"📊 Progress: {completed}/{len(streams)} streams ({elapsed_time:.0f}s elapsed)")
+
         # Memory cleanup between streams
         cleanup_memory()
-        
+
         # Small delay to prevent overload
         time.sleep(DELAY_BETWEEN_STREAMS)
-    
+
+    total_scan_time = time.time() - scan_start_time
+
     with streams_lock:
         last_updated = time.strftime("%Y-%m-%d %H:%M:%S")
-    
+
     fetch_status["is_fetching"] = False
-    fetch_status["progress"] = f"Complete! Found {len(qualifying_streams)} qualifying streams."
-    
+    fetch_status["progress"] = f"Complete! Found {len(qualifying_streams)} qualifying streams in {total_scan_time:.0f}s."
+
     # Final cleanup
     cleanup_memory()
-    
-    print(f"\n===== Scan Complete: {len(qualifying_streams)} qualifying streams =====\n")
+
+    print(f"\n===== Scan Complete: {len(qualifying_streams)} qualifying streams in {total_scan_time:.0f}s =====\n")
 
 
 def refresh_existing_streams():
