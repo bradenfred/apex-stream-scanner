@@ -104,58 +104,85 @@ def get_twitch_token():
 
 
 def get_apex_streams(token, limit=MAX_STREAMS_TO_SCAN):
-    """Fetch live Apex Legends streams from Twitch"""
+    """
+    Fetch live Apex Legends streams from Twitch with FAIR SELECTION.
+    Collects a large pool of streams and selects randomly for equal probability.
+    """
     if not token:
         return []
-    
+
     url = "https://api.twitch.tv/helix/streams"
     headers = {
         "Authorization": f"Bearer {token}",
         "Client-Id": CLIENT_ID
     }
-    
+
+    # Step 1: Collect a large pool of ALL Apex streams (no viewer bias)
     all_streams = []
     cursor = None
     pages = 0
-    
-    while len(all_streams) < limit and pages < 2:  # Reduced pages
+    max_pages = 12  # Collect up to 1200 streams for fair representation
+
+    print(f"📊 Collecting large pool of Apex streams (up to {max_pages * 100} streams)...")
+
+    while pages < max_pages:
         params = {
             "game_id": "511224",  # Apex Legends
             "type": "live",
-            "first": min(limit, 100)
+            "first": 100  # Always fetch 100 per page
         }
         if cursor:
             params["after"] = cursor
-        
+
         try:
             response = requests.get(url, headers=headers, params=params, timeout=10)
-            
+
             if response.status_code != 200:
                 print(f"API error: {response.status_code}")
                 break
-            
+
             data = response.json().get("data", [])
             if not data:
+                print(f"   No more streams after page {pages + 1}")
                 break
-            
+
             streams = [{"user_login": s["user_login"], "viewer_count": s["viewer_count"]} for s in data]
             all_streams.extend(streams)
-            
+
             cursor = response.json().get("pagination", {}).get("cursor")
             pages += 1
-            
+
+            print(f"   Page {pages}: Got {len(data)} streams (total pool: {len(all_streams)})")
+
             if not cursor:
                 break
+
         except Exception as e:
-            print(f"API error: {e}")
+            print(f"API error on page {pages + 1}: {e}")
             break
-    
-    # Sort by viewer count (prioritize smaller streams)
-    all_streams.sort(key=lambda x: x["viewer_count"])
-    random.shuffle(all_streams)
-    
-    print(f"📡 Found {len(all_streams)} Apex streams (limit: {limit})")
-    return all_streams[:limit]
+
+    if len(all_streams) == 0:
+        print("❌ No Apex streams found")
+        return []
+
+    # Step 2: Fair random selection from the complete pool
+    # This gives equal probability to all streams regardless of viewer count
+    if len(all_streams) <= limit:
+        selected_streams = all_streams
+        print(f"📊 Using all {len(all_streams)} streams (smaller than limit)")
+    else:
+        selected_streams = random.sample(all_streams, limit)
+        print(f"🎲 Fair random selection: picked {limit} streams from {len(all_streams)} total pool")
+
+    # Show viewer count distribution for transparency
+    viewer_counts = [s["viewer_count"] for s in selected_streams]
+    avg_viewers = sum(viewer_counts) / len(viewer_counts)
+    min_viewers = min(viewer_counts)
+    max_viewers = max(viewer_counts)
+
+    print(f"📊 Selected streams stats: {min_viewers}-{max_viewers} viewers (avg: {avg_viewers:.0f})")
+
+    return selected_streams
 
 
 def downscale_image(frame, max_width=MAX_IMAGE_WIDTH):
